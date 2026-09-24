@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -32,11 +33,13 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	agentv1 "jarvis.internal/gen/go/jarvis/agent/v1"
+	auditv1 "jarvis.internal/gen/go/jarvis/audit/v1"
 	commonv1 "jarvis.internal/gen/go/jarvis/common/v1"
 	devicev1 "jarvis.internal/gen/go/jarvis/device/v1"
 	knowledgev1 "jarvis.internal/gen/go/jarvis/knowledge/v1"
 	mcpv1 "jarvis.internal/gen/go/jarvis/mcp/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/libs/go/vaultclient"
 	"jarvis.internal/orchestrator/internal/clients"
 	"jarvis.internal/orchestrator/internal/engine"
@@ -271,8 +274,67 @@ type harness struct {
 	agent     *fakeAgent
 	device    *fakeDevice
 	metrics   *metrics.Metrics
+	audit     *fakeAudit
 	tenant    string
 	user      string
+}
+
+// fakeAudit collects what the engine records.
+type fakeAudit struct {
+	mu     sync.Mutex
+	events []*auditv1.Event
+}
+
+func (f *fakeAudit) Record(_ context.Context, req *auditv1.RecordRequest, _ ...grpc.CallOption) (*auditv1.RecordResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, req.GetEvents()...)
+	return &auditv1.RecordResponse{}, nil
+}
+
+func (f *fakeAudit) ListEvents(context.Context, *auditv1.ListEventsRequest, ...grpc.CallOption) (*auditv1.ListEventsResponse, error) {
+	return nil, errors.New("not used")
+}
+
+func (f *fakeAudit) VerifyChain(context.Context, *auditv1.VerifyChainRequest, ...grpc.CallOption) (*auditv1.VerifyChainResponse, error) {
+	return nil, errors.New("not used")
+}
+
+// waitFor returns the recorded events with this action, waiting for at least n.
+func (f *fakeAudit) waitFor(t *testing.T, action string, n int) []*auditv1.Event {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		f.mu.Lock()
+		var found []*auditv1.Event
+		for _, e := range f.events {
+			if e.GetAction() == action {
+				found = append(found, e)
+			}
+		}
+		f.mu.Unlock()
+		if len(found) >= n {
+			return found
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no %d %q audit events (got %d)", n, action, len(found))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// mentions reports whether any recorded event's details contain text.
+func (f *fakeAudit) mentions(text string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.events {
+		for _, v := range e.GetDetails() {
+			if strings.Contains(v, text) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type options struct {
@@ -300,8 +362,11 @@ func newHarness(t *testing.T, opts ...func(*options)) *harness {
 	}
 	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelDebug}))
 	devices := &fakeDevices{device: h.device}
+	h.audit = &fakeAudit{}
+	recorder := auditlog.New(h.audit, logger, auditlog.Options{FlushEvery: 10 * time.Millisecond})
+	t.Cleanup(func() { recorder.Close(context.Background()) })
 	eng := engine.New(engine.Deps{Store: h.store, Keys: h.keys, Sealer: newSealer(), MCP: h.mcp, Knowledge: h.knowledge,
-		Agent: h.agent, Devices: devices, Metrics: h.metrics, Log: logger}, engine.Options{
+		Agent: h.agent, Devices: devices, Metrics: h.metrics, Log: logger, Audit: recorder}, engine.Options{
 		OpenAIModel: "gpt-6-luna", XAIModel: "grok-4.6", Workers: 2, TaskMaxSteps: o.maxSteps, TaskTimeout: time.Minute,
 		ToolTimeout: 5 * time.Second, ConfirmationTTL: o.confirmationTTL, TranscriptRetention: time.Hour,
 		MaxVoiceTools: 40, PollInterval: 20 * time.Millisecond,

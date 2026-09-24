@@ -37,6 +37,7 @@ import (
 	appv1 "jarvis.internal/gen/go/jarvis/app/v1"
 	"jarvis.internal/gen/go/jarvis/app/v1/appv1connect"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/libs/go/mtls"
 	"jarvis.internal/libs/go/usertoken"
 )
@@ -109,10 +110,27 @@ func serve(cfg config.Config, logger *slog.Logger) error {
 	}
 	defer func() { _ = orchConn.Close() }()
 
+	var audit *auditlog.Recorder
+	if cfg.AuditAddr != "" {
+		recorder, closeAudit, err := auditlog.Dial(cfg.AuditAddr, cfg.ClientCert, cfg.ClientKey, cfg.ClientCA,
+			cfg.AuditServerName, logger)
+		if err != nil {
+			return fmt.Errorf("audit client: %w", err)
+		}
+		audit = recorder
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			closeAudit(ctx)
+		}()
+	} else {
+		logger.Warn("no audit service configured (APP_AUDIT_ADDR): app events are not audited")
+	}
+
 	m := metrics.New()
 	service := &api.Service{
 		Store: st, Minter: minter, Orchestrator: orchv1.NewOrchestratorServiceClient(orchConn), Metrics: m,
-		Log: logger, VoiceURL: cfg.VoiceURL, RefreshTTL: cfg.RefreshIdleTTL,
+		Log: logger, VoiceURL: cfg.VoiceURL, RefreshTTL: cfg.RefreshIdleTTL, Audit: audit,
 	}
 	path, handler := appv1connect.NewAppServiceHandler(service,
 		connect.WithInterceptors(

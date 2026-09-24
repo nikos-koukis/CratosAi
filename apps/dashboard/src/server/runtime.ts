@@ -22,7 +22,14 @@ export async function start(): Promise<void> {
   const cfg = config() // throws, and stops the server, if the configuration is wrong
   const applied = await migrate(db())
   log.info(
-    { origin: cfg.origin.origin, rpID: cfg.rpID, vault: cfg.vaultAddr, appAdmin: cfg.appAdminAddr, applied },
+    {
+      origin: cfg.origin.origin,
+      rpID: cfg.rpID,
+      vault: cfg.vaultAddr,
+      appAdmin: cfg.appAdminAddr,
+      audit: cfg.auditAddr,
+      applied,
+    },
     'dashboard ready',
   )
   const housekeeping = setInterval(

@@ -12,7 +12,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    env: { LOG_LEVEL: 'silent' },
+    // Nothing listens on port 9: tests that check audit events start a fake audit service.
+    env: { LOG_LEVEL: 'silent', DASHBOARD_AUDIT_ADDR: '127.0.0.1:9' },
     include: ['tests/**/*.test.ts'],
     // PostgreSQL containers start once per file.
     testTimeout: 30_000,

@@ -7,14 +7,17 @@ use anyhow::Context;
 use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
-use tonic::{codegen::http, transport::Server};
+use tonic::{
+    codegen::http,
+    transport::{Certificate, Channel, ClientTlsConfig, Identity, Server},
+};
 
 pub use jarvis_common::mtls::TlsMaterial;
 
 use crate::{
-    audit::{AuditSink, TracingAuditSink},
+    audit::{AuditShipper, AuditSink, GrpcAuditSink, TeeAuditSink, TracingAuditSink},
     authz::AuthzPolicy,
-    config::Config,
+    config::{AuditTarget, Config},
     crypto::MasterKey,
     proto::{FILE_DESCRIPTOR_SET, vault_v1::vault_service_server::VaultServiceServer},
     service::VaultService,
@@ -115,6 +118,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         tls,
         authz_policy_path,
         enable_reflection,
+        audit,
     } = config;
 
     let policy = AuthzPolicy::load(&authz_policy_path)?;
@@ -149,6 +153,27 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     let store = KeyStore::new(pool.clone());
     store.register_kek(master_key.kek_id()).await?;
 
+    // Every event goes to the log; with an audit service, also to the trail.
+    let (audit, shipper): (Arc<dyn AuditSink>, Option<AuditShipper>) = match audit {
+        Some(target) => {
+            let (sink, shipper) = GrpcAuditSink::start(audit_channel(&target)?);
+            tracing::info!(addr = %target.addr, "audit events are recorded at the audit service");
+            (
+                Arc::new(TeeAuditSink(vec![
+                    Arc::new(TracingAuditSink),
+                    Arc::new(sink),
+                ])),
+                Some(shipper),
+            )
+        }
+        None => {
+            tracing::warn!(
+                "no audit service configured (VAULT_AUDIT_ADDR): audit events go to the log only"
+            );
+            (Arc::new(TracingAuditSink), None)
+        }
+    };
+
     let listener = TcpListener::bind(listen_addr)
         .await
         .with_context(|| format!("cannot listen on {listen_addr}"))?;
@@ -165,7 +190,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
             store,
             master_key: Arc::new(master_key),
             policy: Arc::new(policy),
-            audit: Arc::new(TracingAuditSink),
+            audit,
         },
         &tls,
         ServeOptions { enable_reflection },
@@ -173,8 +198,28 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     )
     .await?;
 
+    if let Some(shipper) = shipper {
+        shipper.finish(Duration::from_secs(10)).await;
+    }
     pool.close().await;
     Ok(())
+}
+
+/// A lazily connected mTLS channel to the audit service, as spiffe://…/vault.
+fn audit_channel(target: &AuditTarget) -> anyhow::Result<Channel> {
+    let read = |path: &std::path::Path| {
+        std::fs::read(path).with_context(|| format!("cannot read {}", path.display()))
+    };
+    let tls = ClientTlsConfig::new()
+        .ca_certificate(Certificate::from_pem(read(&target.ca)?))
+        .identity(Identity::from_pem(read(&target.cert)?, read(&target.key)?))
+        .domain_name(target.server_name.clone());
+    Ok(Channel::from_shared(format!("https://{}", target.addr))
+        .context("VAULT_AUDIT_ADDR is not a valid address")?
+        .tls_config(tls)
+        .context("audit service TLS")?
+        .connect_timeout(Duration::from_secs(5))
+        .connect_lazy())
 }
 
 fn request_span(request: &http::Request<()>) -> tracing::Span {

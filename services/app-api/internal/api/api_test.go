@@ -19,6 +19,7 @@ import (
 	"jarvis.internal/app-api/internal/api"
 	"jarvis.internal/app-api/internal/secret"
 	appv1 "jarvis.internal/gen/go/jarvis/app/v1"
+	auditv1 "jarvis.internal/gen/go/jarvis/audit/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
 	"jarvis.internal/libs/go/usertoken"
 )
@@ -162,6 +163,12 @@ func TestRefreshRotatesTheTokenAndACopiedTokenEndsTheSession(t *testing.T) {
 	if err := db.QueryRow(tctx(t), `SELECT revoke_reason FROM sessions WHERE id = $1`, fourth.GetSessionId()).
 		Scan(&reason); err != nil || reason != "refresh token reused" {
 		t.Fatalf("revoke reason %q, %v", reason, err)
+	}
+	// The owner's audit trail shows it, for the user, as refused.
+	reused := h.audit.waitFor(t, "device.token_reused", 1)[0]
+	if reused.GetTenantId() != h.tenant || reused.GetOnBehalfOf() != h.user ||
+		reused.GetOutcome() != auditv1.Outcome_OUTCOME_DENIED || reused.GetTargetId() != fourth.GetSessionId() {
+		t.Fatalf("audit event %+v", reused)
 	}
 }
 
@@ -420,5 +427,57 @@ func TestPushTokensFollowTheirPhonesSession(t *testing.T) {
 	if _, err := h.client.RegisterPushToken(tctx(t), connect.NewRequest(&appv1.RegisterPushTokenRequest{DeviceToken: token,
 		Environment: appv1.PushEnvironment_PUSH_ENVIRONMENT_SANDBOX})); connect.CodeOf(err) != connect.CodeUnauthenticated {
 		t.Fatalf("anonymous register: %v", err)
+	}
+}
+
+func TestWhatPhonesDoIsAudited(t *testing.T) {
+	h := newHarness(t)
+	s := h.pair(t)
+	paired := h.audit.waitFor(t, "device.paired", 1)[0]
+	if paired.GetTenantId() != h.tenant || paired.GetOnBehalfOf() != h.user ||
+		paired.GetActor().GetKind() != auditv1.ActorKind_ACTOR_KIND_DEVICE ||
+		paired.GetActor().GetId() != "app-session:"+s.GetSessionId() || paired.GetDetails()["device_name"] != "Κώστα's iPhone" {
+		t.Fatalf("paired %+v", paired)
+	}
+
+	h.orch.tasks = []*orchv1.Task{{TaskId: "0199e2e0-0000-7000-8000-00000000a001", Goal: "g"}}
+	if _, err := h.client.CancelTask(tctx(t), authed(s.GetAccessToken(),
+		&appv1.CancelTaskRequest{TaskId: "0199e2e0-0000-7000-8000-00000000a001"})); err != nil {
+		t.Fatal(err)
+	}
+	if e := h.audit.waitFor(t, "task.cancelled", 1)[0]; e.GetTargetId() != "0199e2e0-0000-7000-8000-00000000a001" {
+		t.Fatalf("cancelled %+v", e)
+	}
+
+	sig := make([]byte, 64)
+	approve := func() error {
+		_, err := h.client.SubmitApproval(tctx(t), authed(s.GetAccessToken(), &appv1.SubmitApprovalRequest{
+			ApprovalId: "appr-1", ApproverId: "iphone", Signature: sig}))
+		return err
+	}
+	if err := approve(); err != nil {
+		t.Fatal(err)
+	}
+	h.orch.mu.Lock()
+	h.orch.submitErr = status.Error(codes.PermissionDenied, "bad signature")
+	h.orch.mu.Unlock()
+	_ = approve()
+	approvals := h.audit.waitFor(t, "command.approval_submitted", 2)
+	if approvals[0].GetOutcome() != auditv1.Outcome_OUTCOME_SUCCESS || approvals[1].GetOutcome() != auditv1.Outcome_OUTCOME_DENIED ||
+		approvals[0].GetDetails()["approver_id"] != "iphone" {
+		t.Fatalf("approvals %+v", approvals)
+	}
+
+	if _, err := h.client.SignOut(tctx(t), connect.NewRequest(&appv1.SignOutRequest{RefreshToken: s.GetRefreshToken()})); err != nil {
+		t.Fatal(err)
+	}
+	if e := h.audit.waitFor(t, "device.signed_out", 1)[0]; e.GetTargetId() != s.GetSessionId() {
+		t.Fatalf("signed out %+v", e)
+	}
+	// Signing out again (already ended) records nothing more.
+	_, _ = h.client.SignOut(tctx(t), connect.NewRequest(&appv1.SignOutRequest{RefreshToken: s.GetRefreshToken()}))
+	time.Sleep(50 * time.Millisecond)
+	if n := len(h.audit.waitFor(t, "device.signed_out", 1)); n != 1 {
+		t.Fatalf("%d sign-out events", n)
 	}
 }

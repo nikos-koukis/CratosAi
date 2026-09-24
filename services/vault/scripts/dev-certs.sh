@@ -7,6 +7,8 @@
 #   dashboard-api.pem, -key.pem            client: spiffe://jarvis.local/dashboard-api
 #   voice-gateway.pem, -key.pem            client: spiffe://jarvis.local/voice-gateway
 #   mcp-router.pem, -key.pem               client: spiffe://jarvis.local/mcp-router
+#   vault-client.pem, -key.pem             the Vault's own identity, towards the audit
+#                                          service: spiffe://jarvis.local/vault
 #
 # Usage: scripts/dev-certs.sh [output-dir]   (default: .dev/certs)
 set -euo pipefail
@@ -45,6 +47,7 @@ issue server vault serverAuth "DNS:localhost,IP:127.0.0.1"
 issue dashboard-api dashboard-api clientAuth "URI:spiffe://$TRUST_DOMAIN/dashboard-api"
 issue voice-gateway voice-gateway clientAuth "URI:spiffe://$TRUST_DOMAIN/voice-gateway"
 issue mcp-router mcp-router clientAuth "URI:spiffe://$TRUST_DOMAIN/mcp-router"
+issue vault-client vault clientAuth "URI:spiffe://$TRUST_DOMAIN/vault"
 rm -f ca.srl
 
 echo "Development certificates written to $(pwd) (valid $DAYS days)."

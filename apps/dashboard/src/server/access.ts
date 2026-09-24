@@ -3,6 +3,8 @@ import 'server-only'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 
+import { currentAction } from './action'
+import { audit, Outcome, person } from './audit'
 import { actionSession, requireSession, type Session } from './auth/session'
 import { isUuid } from './ids'
 import { Problem } from './problem'
@@ -29,7 +31,24 @@ export async function actionWorkspace(workspaceId: unknown, role?: Role): Promis
   const workspace = isUuid(workspaceId) ? await getMembership(db(), workspaceId, session.userId) : undefined
   if (!workspace) throw new Problem('not_found', 'No such workspace.')
   if (role === 'owner' && workspace.role !== 'owner') {
+    auditDenied({ session, workspace }, 'owner_required')
     throw new Problem('forbidden', 'Only owners of the workspace can do this.')
   }
   return { session, workspace }
+}
+
+/**
+ * Records a refused attempt. The dashboard hides what a member may not do, so
+ * an attempt means a crafted request (or a stale page).
+ */
+export function auditDenied(access: Access, reason: string): void {
+  const attempted = currentAction()
+  audit({
+    tenantId: access.workspace.workspaceId,
+    actor: person(access.session.userId),
+    action: 'workspace.access_denied',
+    outcome: Outcome.DENIED,
+    reason,
+    details: attempted ? { attempted } : undefined,
+  })
 }

@@ -35,6 +35,8 @@ describe('configuration', () => {
     expect(c.secureCookies).toBe(false)
     expect(c.vaultAddr).toBe('127.0.0.1:50051')
     expect(c.appAdminAddr).toBe('127.0.0.1:50055')
+    expect(c.mcpAddr).toBe('127.0.0.1:50052')
+    expect(c.auditAddr).toBe('127.0.0.1:50056')
     expect(c.sessionIdleMs).toBe(24 * 3_600_000)
     expect(c.sessionLifetimeMs).toBe(7 * 86_400_000)
     expect(c.tls.cert.toString()).toBe('-- cert.pem --')

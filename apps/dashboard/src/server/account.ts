@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { PasskeyView } from '@/lib/types'
 
+import { auditAccount } from './audit'
 import type { Session } from './auth/session'
 import { withTx } from './db/db'
 import { log } from './log'
@@ -26,4 +27,5 @@ export async function recoveryCodesLeft(session: Session): Promise<number> {
 export async function deletePasskey(session: Session, credentialId: string): Promise<void> {
   await withTx(db(), (tx) => removePasskey(tx, session.userId, credentialId))
   log.info({ userId: session.userId }, 'passkey removed')
+  await auditAccount(session.userId, { action: 'account.passkey_removed' })
 }

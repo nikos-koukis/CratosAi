@@ -1,10 +1,12 @@
 # Jarvis dashboard
 
-The web dashboard: sign in with a passkey, run workspaces with their members, store the workspace's provider keys, and pair iPhones.
+The web dashboard: sign in with a passkey, run workspaces with their members, store the workspace's provider keys, pair iPhones, connect your own MCP servers (Jira, Linear, Notion, GitHub…), and read the workspace's audit trail.
 
 ```
 browser ──HTTPS──▶ Next.js (pages + server actions) ──gRPC + mTLS──▶ Vault      provider keys
                          │   spiffe://jarvis.local/dashboard-api  ──▶ app API    pairing codes, phone sessions
+                         │                                         ──▶ MCP router integrations, OAuth, tool lists
+                         │                                         ──▶ audit      records what people do, shows the trail
                          └──▶ PostgreSQL `dashboard`: users, passkeys, sessions, workspaces, members, invitations
 ```
 
@@ -39,6 +41,42 @@ Protobuf types come from [`gen/ts`](../../gen/ts/) (`@jarvis/proto`, generated b
   - A workspace always keeps an owner. The check locks the memberships, so two owners stepping down at once cannot both succeed.
 - **Invitations** are single-use links, valid for 7 days, stored hashed and shown once. The invitee signs in or creates an account, and joins with the invitation's role.
 - **Phones** belong to the person who paired them: the Devices page shows and signs out only yours.
+- **Integrations** (MCP servers) are personal too. Each member connects their own accounts, and Jarvis uses them when that person talks to it.
+
+## Integrations
+
+- **Catalog servers** that sign in with OAuth (Atlassian, Linear, Notion, ClickUp, …) and **token servers** (GitHub, with a personal access token).
+  - Servers whose OAuth app is not configured (Slack, Gmail) show as not set up.
+  - Any other MCP server can be connected by URL, if the router allows custom servers.
+- **Connecting with OAuth:**
+  1. The router answers with the server's sign-in URL.
+  2. The dashboard records the URL's `state` for the signed-in user (hashed, 10 minutes), checks the URL (https; loopback http only for development), and sends the browser there.
+  3. The server sends the browser back to `/integrations/callback`.
+     - The dashboard finishes the authorization only if that state was started by this user, who is still a member of the workspace; otherwise it never reaches the router.
+     - The state works once.
+     - The integration the router completed must be that user's.
+- **Tokens** go to the router once, which seals them with the Vault. The dashboard zeroes its copy.
+- The page lists each connection's status (connected, waiting for sign-in, sign in again) and its tools. The dashboard may list tools but never call them.
+- Errors come from the router's `google.rpc.ErrorInfo` reason. For example, "not a public https server" is not mistaken for the dashboard being refused.
+
+## Audit trail
+
+The dashboard records what people do in it at the [audit service](../../services/audit/), and shows each workspace's trail.
+
+- **Recorded:**
+  - sign-ups, sign-ins (and failed ones, for a known passkey), recovery codes used and replaced, passkeys added and removed, sign-outs;
+  - workspaces created, invitations, joins, role changes, removals;
+  - keys stored and revoked;
+  - pairing codes issued, phones signed out.
+  - Each is recorded with the person as the actor, and never with a secret (keys, codes, invitation tokens).
+- **Account events** belong to a person, not a workspace, so they go to every workspace the person belongs to.
+- **Refused attempts** are recorded too, as `workspace.access_denied` with the server action that was tried, for example a member calling an owner-only action. The pages hide those actions, so an attempt means a crafted request or a stale page.
+- **Recording never fails or slows an action.** [`AuditRecorder`](src/server/audit.ts) queues events in memory (at most 10,000) and sends them in batches every 500 ms. It retries with backoff while the audit service is down. Whatever cannot be delivered is logged (`audit event not delivered`), including events still queued when the process exits.
+- **The Audit trail page** shows the workspace's entries from every service: the dashboard, the Vault, the app API, the MCP router and the orchestrator.
+  - Owners see everything, and can filter by person.
+  - Members see what they did and what was done for them: by Jarvis, their phones and computers. The server enforces this, whatever the URL asks for.
+  - Filters: a category (an action prefix). Pages are loaded in order, 50 entries at a time.
+  - Owners can **verify the trail**. The audit service recomputes the workspace's hash chain and says whether it is intact or where it breaks.
 
 ## Protections
 
@@ -65,6 +103,8 @@ Protobuf types come from [`gen/ts`](../../gen/ts/) (`@jarvis/proto`, generated b
 | `DASHBOARD_TLS_CA`, `DASHBOARD_TLS_CERT`, `DASHBOARD_TLS_KEY` | required          | Its identity towards the services: `spiffe://jarvis.local/dashboard-api`                    |
 | `DASHBOARD_VAULT_ADDR`                                        | `127.0.0.1:50051` |                                                                                             |
 | `DASHBOARD_APP_ADMIN_ADDR`                                    | `127.0.0.1:50055` | The app API's admin (gRPC) listener                                                         |
+| `DASHBOARD_MCP_ADDR`                                          | `127.0.0.1:50052` | The MCP router; its `MCP_OAUTH_REDIRECT_URI` must be `<origin>/integrations/callback`       |
+| `DASHBOARD_AUDIT_ADDR`                                        | `127.0.0.1:50056` | The audit service: records what people do, and shows the trail                              |
 | `DASHBOARD_SESSION_IDLE`, `DASHBOARD_SESSION_LIFETIME`        | `24h`, `7d`       |                                                                                             |
 | `DASHBOARD_TRUST_PROXY`                                       | `false`           | Rate-limit by the first `X-Forwarded-For` address (only behind a proxy you control)         |
 | `LOG_LEVEL`                                                   | `info`            |                                                                                             |
@@ -91,6 +131,7 @@ To try it with the fake providers:
 1. Create an account and a workspace.
 2. Store `sk-dev-fake-0001` as the OpenAI key; the fake voice and LLM providers accept only that one.
 3. Pair the iPhone from **Devices**.
+4. In **Integrations → Another MCP server**, connect `http://127.0.0.1:8931/mcp`. That is `mcpctl dev-server`, a fake OAuth + MCP server that the dev stack runs; it approves at once.
 
 Passkeys need a secure context: `http://localhost` works, and any other host needs https. To use it from other devices, serve it through Tailscale and set the origin accordingly:
 
@@ -115,14 +156,27 @@ pnpm nx run dashboard:e2e    # Playwright in Chrome, against the running stack (
   - single-use challenges, recovery codes, keeping the last passkey,
   - a workspace always keeping an owner, including a deterministic race of two owners stepping down,
   - invitations (single use, expiry, withdrawal, other workspaces).
+- **Integrations:**
+  - an authorization finished only by the user who started it, once, while still a member,
+  - a refusal at the server reported as denied,
+  - a completion for someone else refused,
+  - unsafe sign-in links never followed,
+  - token connections,
+  - router errors mapped by their ErrorInfo reason, and only from the router's domain.
 - **Sign-in:** recovery sessions limited to adding a passkey, a fresh session on every sign-in, forged cookies, challenge use from another browser, rate limits, and role checks on the server.
+- **Audit:**
+  - the recorder: batching, retries with backoff while the service is down, a malformed event not losing the others, a bounded queue, one send at a time;
+  - with PostgreSQL and a fake audit service over real mTLS: events recorded as `dashboard-api` without secrets, account events in every workspace of the user, refused attempts with the action tried, events held through an outage;
+  - the trail: owners see everything, members only their own (whatever the URL says), names, paging, verification and outages.
 - **gRPC:** the clients against fake Vault and app API servers over real mTLS: their certificate, request ids, key rotation that asks first, error mapping, and a service that is down.
-- **End to end,** in Chrome with a virtual authenticator, against the real Vault and app API:
+- **End to end,** in Chrome with a virtual authenticator, against the real Vault, app API and audit service:
   - sign up, store and rotate a key, revoke it as leaked,
   - pair a phone, invite a member who signs up with their own passkey,
   - the member's limits, removing them,
-  - sign out and in, and recovery on a new device.
-  - The run leaves an `E2E …` workspace, with its keys revoked, in the development database.
+  - sign out and in, and recovery on a new device,
+  - the member's audit trail (only their own entries) and the owner's (everything, filtered, verified intact).
+  - Connecting the fake MCP server with OAuth through the real router, its tools, a replayed callback that does nothing, and disconnecting.
+  - The run leaves an `E2E …` workspace, with its keys revoked, in the development database, and its entries in the audit trail (which is append-only).
 
 Mutation testing confirmed that the tests catch these defects:
 
@@ -131,11 +185,17 @@ Mutation testing confirmed that the tests catch these defects:
 - no lock in the last-owner check,
 - a session kept across sign-ins,
 - challenges usable for another ceremony,
-- no idle timeout.
+- no idle timeout,
+- an OAuth state usable by another user,
+- no membership check at the callback,
+- accepting the router's completion for someone else,
+- following unsafe sign-in links,
+- trusting an ErrorInfo from another service's domain,
+- members reading others' audit entries,
+- refused attempts not recorded.
 
 ## Known limitations
 
-- **Coming next:** MCP connections (4.2b) and the audit trail (4.2c).
 - **Not yet:**
   - renaming or deleting a workspace,
   - renaming passkeys,

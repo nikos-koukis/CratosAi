@@ -281,9 +281,20 @@ export async function takeChallenge(
 export async function purgeExpired(q: Queryable): Promise<void> {
   await q.query("DELETE FROM sessions WHERE expire_time < now() - interval '1 day'")
   await q.query('DELETE FROM webauthn_challenges WHERE expire_time < now()')
+  await q.query('DELETE FROM mcp_authorizations WHERE expire_time < now()')
   await q.query(
     `DELETE FROM invitations
       WHERE (accept_time IS NOT NULL OR revoke_time IS NOT NULL OR expire_time < now())
         AND create_time < now() - interval '30 days'`,
   )
+}
+
+/** Names of the users with these ids (members past and present). */
+export async function displayNames(q: Queryable, userIds: string[]): Promise<Map<string, string>> {
+  if (userIds.length === 0) return new Map()
+  const { rows } = await q.query<{ user_id: string; display_name: string }>(
+    'SELECT user_id, display_name FROM users WHERE user_id = ANY($1::uuid[])',
+    [userIds],
+  )
+  return new Map(rows.map((r) => [r.user_id, r.display_name]))
 }

@@ -24,7 +24,9 @@ export default async function WorkspaceLayout(props: LayoutProps<'/w/[workspaceI
         <nav className="space-y-1" aria-label="Workspace">
           <NavLink href={`${base}/keys` as Route}>Provider keys</NavLink>
           <NavLink href={`${base}/devices` as Route}>Devices</NavLink>
+          <NavLink href={`${base}/integrations` as Route}>Integrations</NavLink>
           <NavLink href={`${base}/members` as Route}>Members</NavLink>
+          <NavLink href={`${base}/audit` as Route}>Audit trail</NavLink>
         </nav>
         <div className="mt-auto space-y-2 border-t border-zinc-200 pt-4 text-sm dark:border-zinc-800">
           <p className="truncate font-medium" title={session.displayName}>

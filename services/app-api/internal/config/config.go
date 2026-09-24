@@ -51,6 +51,9 @@ type Config struct {
 	ClientCert             string
 	ClientKey              string
 	ClientCA               string
+	// The audit service (optional), with the same client identity.
+	AuditAddr       string
+	AuditServerName string
 
 	// APNs (optional, all or none): the team's auth key, its id, the team
 	// id, and the app's bundle id. Without them no push notifications.
@@ -103,6 +106,7 @@ func Load(lookup Lookup) (Config, error) {
 		ClientCert:       r.required("APP_CLIENT_CERT"),
 		ClientKey:        r.required("APP_CLIENT_KEY"),
 		ClientCA:         r.required("APP_CLIENT_CA"),
+		AuditAddr:        r.str("APP_AUDIT_ADDR", ""),
 
 		APNsKeyFile: r.str("APP_APNS_KEY_FILE", ""),
 		APNsKeyID:   r.str("APP_APNS_KEY_ID", ""),
@@ -114,6 +118,7 @@ func Load(lookup Lookup) (Config, error) {
 	}
 	c.PublicURL = strings.TrimRight(r.str("APP_PUBLIC_URL", "http://"+c.PublicAddr), "/")
 	c.OrchestratorServerName = r.str("APP_ORCHESTRATOR_SERVER_NAME", hostOf(c.OrchestratorAddr))
+	c.AuditServerName = r.str("APP_AUDIT_SERVER_NAME", hostOf(c.AuditAddr))
 
 	if (c.TLSCert == "") != (c.TLSKey == "") {
 		r.fail("APP_TLS_CERT and APP_TLS_KEY must be set together")

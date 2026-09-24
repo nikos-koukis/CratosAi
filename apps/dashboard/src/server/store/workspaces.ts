@@ -222,13 +222,14 @@ export async function acceptInvitation(
   tx: pg.PoolClient,
   tokenHash: Buffer,
   userId: string,
-): Promise<{ workspaceId: string; role: Role }> {
+): Promise<{ workspaceId: string; role: Role; invitationId: string }> {
   const { rows } = await tx.query<{
     workspace_id: string
+    invitation_id: string
     role: Role
     state: InvitationState
   }>(
-    `SELECT workspace_id, role,
+    `SELECT workspace_id, invitation_id, role,
             CASE WHEN revoke_time IS NOT NULL THEN 'revoked'
                  WHEN accept_time IS NOT NULL THEN 'used'
                  WHEN expire_time <= now() THEN 'expired'
@@ -249,5 +250,9 @@ export async function acceptInvitation(
     tokenHash,
     userId,
   ])
-  return { workspaceId: invitation.workspace_id, role: invitation.role }
+  return {
+    workspaceId: invitation.workspace_id,
+    role: invitation.role,
+    invitationId: invitation.invitation_id,
+  }
 }

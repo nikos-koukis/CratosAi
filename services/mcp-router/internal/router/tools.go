@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	mcpv1 "jarvis.internal/gen/go/jarvis/mcp/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/mcp-router/internal/store"
 )
 
@@ -199,7 +203,8 @@ func convertTool(integration store.Integration, t *mcp.Tool) (*mcpv1.Tool, bool)
 // CallTool implements McpRouterServiceServer.
 func (s *Service) CallTool(ctx context.Context, req *mcpv1.CallToolRequest) (*mcpv1.CallToolResponse, error) {
 	start := time.Now()
-	resp, err := s.callTool(ctx, req, start)
+	var integration store.Integration
+	resp, err := s.callTool(ctx, req, start, &integration)
 	outcome := "ok"
 	switch {
 	case err != nil:
@@ -209,10 +214,33 @@ func (s *Service) CallTool(ctx context.Context, req *mcpv1.CallToolRequest) (*mc
 	}
 	s.Metrics.ToolCalls.WithLabelValues(outcome).Inc()
 	s.Metrics.ToolCallTime.Observe(time.Since(start).Seconds())
+	if integration.ID != uuid.Nil { // calls of integrations that were found
+		s.auditToolCall(ctx, integration, req.GetToolName(), outcome, time.Since(start))
+	}
 	return resp, err
 }
 
-func (s *Service) callTool(ctx context.Context, req *mcpv1.CallToolRequest, start time.Time) (*mcpv1.CallToolResponse, error) {
+// auditToolCall records what Jarvis did in the user's account: the tool, not
+// its arguments or results (they may hold anything).
+func (s *Service) auditToolCall(ctx context.Context, i store.Integration, tool, outcome string, took time.Duration) {
+	result, reason := auditlog.Success, ""
+	switch outcome {
+	case "ok":
+	case "tool_error":
+		result, reason = auditlog.Failure, "tool_error"
+	case codes.ResourceExhausted.String(), codes.FailedPrecondition.String():
+		result, reason = auditlog.Denied, strings.ToLower(outcome)
+	default:
+		result, reason = auditlog.Failure, strings.ToLower(outcome)
+	}
+	s.Audit.Record(auditlog.Event{TenantID: i.TenantID.String(), Actor: auditlog.Assistant(), OnBehalfOf: i.UserID,
+		Action: "tool.called", TargetType: "integration", TargetID: i.ID.String(), Outcome: result, Reason: reason,
+		RequestID: RequestID(ctx), Details: map[string]string{"tool": tool, "integration": i.DisplayName,
+			"duration_ms": strconv.FormatInt(took.Milliseconds(), 10)}})
+}
+
+func (s *Service) callTool(ctx context.Context, req *mcpv1.CallToolRequest, start time.Time,
+	found *store.Integration) (*mcpv1.CallToolResponse, error) {
 	if !validToolName(req.GetToolName()) {
 		return nil, invalid("tool_name must be 1 to 128 visible ASCII characters")
 	}
@@ -233,6 +261,7 @@ func (s *Service) callTool(ctx context.Context, req *mcpv1.CallToolRequest, star
 	if err != nil {
 		return nil, err
 	}
+	*found = integration
 	switch integration.Status {
 	case store.StatusPending:
 		return nil, reasonError(codes.FailedPrecondition, mcpv1.ErrorReason_ERROR_REASON_NOT_CONNECTED,

@@ -3,6 +3,7 @@ package router_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -20,6 +21,8 @@ import (
 	"jarvis.internal/mcp-router/internal/catalog"
 	"jarvis.internal/mcp-router/internal/mcptest"
 	"jarvis.internal/mcp-router/internal/netguard"
+
+	auditv1 "jarvis.internal/gen/go/jarvis/audit/v1"
 )
 
 func TestConnectListAndCallTools(t *testing.T) {
@@ -121,6 +124,29 @@ func TestConnectListAndCallTools(t *testing.T) {
 	}
 	_, err = h.call(t, id, "no_such_tool", "{}")
 	wantStatus(t, err, codes.Aborted, mcpv1.ErrorReason_ERROR_REASON_UPSTREAM_ERROR)
+
+	// The user's audit trail: the connection, and each call Jarvis made for them.
+	if e := h.audit.waitFor(t, "integration.connected", 1)[0]; e.GetActor().GetId() != h.user || e.GetTargetId() != id {
+		t.Fatalf("connected %+v", e)
+	}
+	calls := h.audit.waitFor(t, "tool.called", 4)
+	outcomes := map[string]auditv1.Outcome{}
+	for _, c := range calls {
+		if c.GetActor().GetKind() != auditv1.ActorKind_ACTOR_KIND_ASSISTANT || c.GetOnBehalfOf() != h.user ||
+			c.GetTenantId() != h.tenant || c.GetTargetId() != id || c.GetDetails()["integration"] != "127.0.0.1" {
+			t.Fatalf("tool call event %+v", c)
+		}
+		outcomes[c.GetDetails()["tool"]] = c.GetOutcome()
+	}
+	if outcomes["echo"] != auditv1.Outcome_OUTCOME_SUCCESS || outcomes["fail"] != auditv1.Outcome_OUTCOME_FAILURE ||
+		outcomes["no_such_tool"] != auditv1.Outcome_OUTCOME_FAILURE {
+		t.Fatalf("outcomes %v", outcomes)
+	}
+	for _, e := range h.audit.all() {
+		if strings.Contains(fmt.Sprint(e.GetDetails()), "καλημέρα") || strings.Contains(fmt.Sprint(e.GetDetails()), "Fix login") {
+			t.Fatalf("tool arguments reached the audit trail: %v", e)
+		}
+	}
 }
 
 func TestToolListIsCached(t *testing.T) {
@@ -731,6 +757,12 @@ func TestDeleteIntegration(t *testing.T) {
 	}
 	_, err := h.call(t, id, "echo", `{}`)
 	wantStatus(t, err, codes.NotFound, mcpv1.ErrorReason_ERROR_REASON_INTEGRATION_NOT_FOUND)
+	// Recorded once (the second delete found nothing), by the user.
+	time.Sleep(50 * time.Millisecond)
+	deleted := h.audit.waitFor(t, "integration.deleted", 1)
+	if len(deleted) != 1 || deleted[0].GetActor().GetId() != h.user || deleted[0].GetTargetId() != id {
+		t.Fatalf("deleted %+v", deleted)
+	}
 }
 
 func TestPendingIntegrationIsNotCallable(t *testing.T) {

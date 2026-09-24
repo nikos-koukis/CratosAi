@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	agentv1 "jarvis.internal/gen/go/jarvis/agent/v1"
+	auditv1 "jarvis.internal/gen/go/jarvis/audit/v1"
 	commonv1 "jarvis.internal/gen/go/jarvis/common/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
 	"jarvis.internal/orchestrator/internal/store"
@@ -152,6 +153,24 @@ func TestConfirmationNeedsALaterUserTurn(t *testing.T) {
 	if len(h.mcp.called()) != 1 {
 		t.Fatal("the action ran twice")
 	}
+
+	// The audit trail: asked, three attempts to confirm without the user
+	// (blocked), then the user's own yes. What the action says stays out.
+	if e := h.audit.waitFor(t, "action.confirmation_requested", 1)[0]; e.GetDetails()["tool"] != "create_issue" ||
+		e.GetActor().GetKind() != auditv1.ActorKind_ACTOR_KIND_ASSISTANT || e.GetOnBehalfOf() != h.user {
+		t.Fatalf("requested %+v", e)
+	}
+	for _, e := range h.audit.waitFor(t, "action.confirmation_blocked", 3) {
+		if e.GetOutcome() != auditv1.Outcome_OUTCOME_DENIED || e.GetReason() != "no_user_answer" {
+			t.Fatalf("blocked %+v", e)
+		}
+	}
+	if e := h.audit.waitFor(t, "action.confirmed", 1)[0]; e.GetActor().GetId() != h.user || e.GetTargetId() != id {
+		t.Fatalf("confirmed %+v", e)
+	}
+	if h.audit.mentions("Fix login") {
+		t.Fatal("the action's content reached the audit trail")
+	}
 }
 
 func TestQuestionTurnIsSetOnceAndPerConversation(t *testing.T) {
@@ -256,6 +275,14 @@ func TestBackgroundTaskRunsAndReportsBack(t *testing.T) {
 	second := decisions[1].GetItems()
 	if result := second[len(second)-1].GetToolResult(); result.GetCallId() != "c1" || !strings.Contains(result.GetOutput(), "done: search") {
 		t.Fatalf("tool result = %v", result)
+	}
+	h.audit.waitFor(t, "task.started", 1)
+	if e := h.audit.waitFor(t, "task.finished", 1)[0]; e.GetOutcome() != auditv1.Outcome_OUTCOME_SUCCESS ||
+		e.GetTargetId() != task.GetTaskId() || e.GetDetails()["steps"] != "2" {
+		t.Fatalf("finished %+v", e)
+	}
+	if h.audit.mentions("Atlas") {
+		t.Fatal("the task's goal reached the audit trail")
 	}
 }
 
@@ -505,6 +532,23 @@ func TestDevicesAndApprovals(t *testing.T) {
 	if finished[0].GetTaskFinished().GetTask().GetState() != orchv1.TaskState_TASK_STATE_FAILED ||
 		finished[1].GetTaskFinished().GetTask().GetTaskId() != task.GetTaskId() {
 		t.Fatalf("events = %v", finished)
+	}
+
+	// The audit trail: commands that ran (allowlisted, then approved), the
+	// approvals asked for, and the one that did not run. No arguments.
+	ran := h.audit.waitFor(t, "command.ran", 2)
+	if ran[0].GetDetails()["program"] != "/usr/bin/git" || ran[0].GetDetails()["approved"] != "false" ||
+		ran[1].GetDetails()["program"] != "/bin/rm" || ran[1].GetDetails()["approved"] != "true" ||
+		ran[0].GetActor().GetKind() != auditv1.ActorKind_ACTOR_KIND_DEVICE || ran[0].GetOnBehalfOf() != h.user {
+		t.Fatalf("ran %+v", ran)
+	}
+	h.audit.waitFor(t, "command.approval_requested", 2)
+	if e := h.audit.waitFor(t, "command.not_run", 1)[0]; e.GetReason() != "approval_rejected" ||
+		e.GetOutcome() != auditv1.Outcome_OUTCOME_DENIED {
+		t.Fatalf("not run %+v", e)
+	}
+	if h.audit.mentions("-rf") {
+		t.Fatal("command arguments reached the audit trail")
 	}
 
 	list, _ := h.client.ListDevices(tctx(t), &orchv1.ListDevicesRequest{TenantId: h.tenant, UserId: h.user})

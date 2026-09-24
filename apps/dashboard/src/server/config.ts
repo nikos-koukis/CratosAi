@@ -18,6 +18,9 @@ export type Config = {
   tls: { ca: Buffer; cert: Buffer; key: Buffer }
   vaultAddr: string
   appAdminAddr: string
+  mcpAddr: string
+  /** The audit service: the dashboard records what people do there, and shows the trail. */
+  auditAddr: string
   /** A session ends after this long without use, and at the latest after sessionLifetime. */
   sessionIdleMs: number
   sessionLifetimeMs: number
@@ -47,6 +50,8 @@ const schema = z.object({
   DASHBOARD_TLS_KEY: z.string().min(1),
   DASHBOARD_VAULT_ADDR: hostPort.default('127.0.0.1:50051'),
   DASHBOARD_APP_ADMIN_ADDR: hostPort.default('127.0.0.1:50055'),
+  DASHBOARD_MCP_ADDR: hostPort.default('127.0.0.1:50052'),
+  DASHBOARD_AUDIT_ADDR: hostPort.default('127.0.0.1:50056'),
   DASHBOARD_SESSION_IDLE: z.string().default('24h'),
   DASHBOARD_SESSION_LIFETIME: z.string().default('7d'),
   DASHBOARD_TRUST_PROXY: z.enum(['true', 'false']).default('false'),
@@ -109,6 +114,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     tls: { ca: ca!, cert: cert!, key: key! },
     vaultAddr: e.DASHBOARD_VAULT_ADDR,
     appAdminAddr: e.DASHBOARD_APP_ADMIN_ADDR,
+    mcpAddr: e.DASHBOARD_MCP_ADDR,
+    auditAddr: e.DASHBOARD_AUDIT_ADDR,
     sessionIdleMs,
     sessionLifetimeMs,
     trustProxy: e.DASHBOARD_TRUST_PROXY === 'true',

@@ -1,39 +1,14 @@
 import { randomBytes } from 'node:crypto'
 
-import { expect, test, type Browser, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+
+import { person, saveRecoveryCodes } from './support'
 
 // One story through the dashboard, as two people: an owner creates an
 // account and a workspace, stores and rotates a provider key in the real
 // Vault, pairs a phone through the real app API, invites a member, signs out
-// and in again, and recovers access with a recovery code.
-
-/** A browser with its own passkey device (Chrome's virtual authenticator). */
-async function person(browser: Browser): Promise<Page> {
-  const context = await browser.newContext()
-  const page = await context.newPage()
-  const cdp = await context.newCDPSession(page)
-  await cdp.send('WebAuthn.enable')
-  await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: {
-      protocol: 'ctap2',
-      transport: 'internal',
-      hasResidentKey: true,
-      hasUserVerification: true,
-      isUserVerified: true,
-      automaticPresenceSimulation: true,
-    },
-  })
-  return page
-}
-
-async function saveRecoveryCodes(page: Page): Promise<string[]> {
-  const list = page.getByTestId('recovery-codes').locator('li')
-  await expect(list).toHaveCount(10)
-  const codes = await list.allTextContents()
-  await page.getByLabel('I have saved my recovery codes').check()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  return codes
-}
+// and in again, recovers access with a recovery code, and reads it all back
+// from the real audit service.
 
 const fakeKey = (prefix: string) => `${prefix}-e2e-${randomBytes(12).toString('hex')}`
 
@@ -113,6 +88,17 @@ test('owner and member journey', async ({ browser }) => {
   await member.goto('/w/0199e2e0-0000-7000-8000-000000000001/keys')
   await expect(member.getByRole('heading', { name: 'Not found' })).toBeVisible()
 
+  // The member's audit trail: their own entries, not the owner's.
+  await member.goto(`${workspaceUrl}/audit`)
+  const memberTrail = member.getByTestId('audit-events')
+  await expect(async () => {
+    await member.reload()
+    await expect(memberTrail).toContainText('Joined the workspace', { timeout: 1_000 })
+  }).toPass()
+  await expect(memberTrail).toContainText('Created an account')
+  await expect(memberTrail).not.toContainText('Stored a provider key')
+  await expect(member.getByRole('button', { name: 'Verify the trail' })).toHaveCount(0)
+
   // The owner sees them, and removes them.
   await owner.reload()
   await expect(owner.getByTestId('members')).toContainText(`Member ${run}`)
@@ -149,4 +135,39 @@ test('owner and member journey', async ({ browser }) => {
   await again.getByLabel('Recovery code').fill(codes[0]!)
   await again.getByRole('button', { name: 'Sign in' }).click()
   await expect(again.getByRole('alert').filter({ hasText: 'not valid, or was already used' })).toBeVisible()
+
+  // The owner's audit trail has all of it, recorded by the dashboard and the Vault.
+  await newDevice.goto(`${workspaceUrl}/audit`)
+  const trail = newDevice.getByTestId('audit-events')
+  await expect(async () => {
+    await newDevice.reload()
+    await expect(trail).toContainText('Added a passkey', { timeout: 1_000 })
+  }).toPass()
+  for (const entry of [
+    'Created the workspace',
+    'Stored a provider key',
+    'Revoked a provider key',
+    'Created a pairing code',
+    'Invited someone',
+    'Removed a member',
+    'Signed out',
+    'Signed in with a recovery code',
+    `Member ${run}`,
+  ]) {
+    await expect(trail).toContainText(entry)
+  }
+  await expect(trail).toContainText('recorded by Key vault')
+  await expect(trail).not.toContainText(first)
+  await expect(trail).not.toContainText(codes[0]!)
+
+  // Filtered to provider keys.
+  await newDevice.getByLabel('Show').selectOption('key')
+  await newDevice.getByRole('button', { name: 'Apply' }).click()
+  await expect(newDevice).toHaveURL(/category=key/)
+  await expect(trail).toContainText('Revoked a provider key')
+  await expect(trail).not.toContainText('Signed in')
+
+  // Nothing was altered.
+  await newDevice.getByRole('button', { name: 'Verify the trail' }).click()
+  await expect(newDevice.getByText(/^Intact: all \d+ events are unchanged and in order\./)).toBeVisible()
 })

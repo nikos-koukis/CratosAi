@@ -30,6 +30,7 @@ import (
 	"jarvis.internal/app-api/internal/store"
 	appv1 "jarvis.internal/gen/go/jarvis/app/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
+	"jarvis.internal/libs/go/auditlog"
 )
 
 // RefreshGrace is how long a just-rotated refresh token still works, so an
@@ -49,7 +50,7 @@ type Store interface {
 	SessionChecker
 	RedeemPairingCode(ctx context.Context, codeHash []byte, n store.NewSession) (store.Session, error)
 	Refresh(ctx context.Context, presented, next []byte, idleTTL, grace time.Duration) (store.Session, store.RefreshOutcome, error)
-	SignOut(ctx context.Context, presented []byte) (uuid.NullUUID, error)
+	SignOut(ctx context.Context, presented []byte) (store.Session, bool, error)
 	SetPushToken(ctx context.Context, session uuid.UUID, token, environment string) error
 	DeletePushToken(ctx context.Context, session uuid.UUID) error
 }
@@ -63,6 +64,13 @@ type Service struct {
 	Log          *slog.Logger
 	VoiceURL     string
 	RefreshTTL   time.Duration
+	// Audit records what phones do (nil: nothing is recorded).
+	Audit *auditlog.Recorder
+}
+
+// phone is the actor of what a paired app does: its session, for its user.
+func phone(session uuid.UUID) auditlog.Actor {
+	return auditlog.Device("app-session:" + session.String())
 }
 
 // --- sessions ------------------------------------------------------------------------
@@ -102,6 +110,10 @@ func (s *Service) RedeemPairingCode(ctx context.Context, req *connect.Request[ap
 		return nil, internal(ctx, s.Log, "mint tokens", err)
 	}
 	s.Metrics.Pairings.WithLabelValues("paired").Inc()
+	s.Audit.Record(auditlog.Event{TenantID: session.TenantID.String(), Actor: phone(session.ID),
+		OnBehalfOf: session.UserID, Action: "device.paired", TargetType: "app_session", TargetID: session.ID.String(),
+		Outcome: auditlog.Success, RequestID: requestID(ctx),
+		Details: map[string]string{"device_name": name, "device_model": model}})
 	s.Log.Info("app paired", "request_id", requestID(ctx), "session_id", session.ID, "tenant_id", session.TenantID,
 		"device_model", model)
 	return connect.NewResponse(&appv1.RedeemPairingCodeResponse{Session: out}), nil
@@ -128,6 +140,11 @@ func (s *Service) RefreshSession(ctx context.Context, req *connect.Request[appv1
 	case outcome == store.Reused:
 		s.Metrics.Refreshes.WithLabelValues("reused").Inc()
 		s.Metrics.Revoked.WithLabelValues("reused").Inc()
+		s.Audit.Record(auditlog.Event{TenantID: session.TenantID.String(), Actor: phone(session.ID),
+			OnBehalfOf: session.UserID, Action: "device.token_reused", TargetType: "app_session",
+			TargetID: session.ID.String(), Outcome: auditlog.Denied, Reason: "refresh_token_reused",
+			RequestID: requestID(ctx), Details: map[string]string{"device_name": session.DeviceName,
+				"effect": "session ended"}})
 		s.Log.Warn("refresh token reused after rotation: session ended (the token was probably copied)",
 			"request_id", requestID(ctx), "session_id", session.ID, "tenant_id", session.TenantID)
 		return nil, sessionEnded()
@@ -147,13 +164,17 @@ func (s *Service) RefreshSession(ctx context.Context, req *connect.Request[appv1
 // SignOut implements AppServiceHandler.
 func (s *Service) SignOut(ctx context.Context, req *connect.Request[appv1.SignOutRequest]) (*connect.Response[appv1.SignOutResponse], error) {
 	if secret.CheckRefreshToken(req.Msg.GetRefreshToken()) == nil {
-		id, err := s.Store.SignOut(ctx, secret.Hash(req.Msg.GetRefreshToken()))
+		session, ended, err := s.Store.SignOut(ctx, secret.Hash(req.Msg.GetRefreshToken()))
 		if err != nil {
 			return nil, internal(ctx, s.Log, "sign out", err)
 		}
-		if id.Valid {
+		if ended {
 			s.Metrics.Revoked.WithLabelValues("signed_out").Inc()
-			s.Log.Info("app signed out", "request_id", requestID(ctx), "session_id", id.UUID)
+			s.Audit.Record(auditlog.Event{TenantID: session.TenantID.String(), Actor: phone(session.ID),
+				OnBehalfOf: session.UserID, Action: "device.signed_out", TargetType: "app_session",
+				TargetID: session.ID.String(), Outcome: auditlog.Success, RequestID: requestID(ctx),
+				Details: map[string]string{"device_name": session.DeviceName}})
+			s.Log.Info("app signed out", "request_id", requestID(ctx), "session_id", session.ID)
 		}
 	}
 	return connect.NewResponse(&appv1.SignOutResponse{}), nil
@@ -238,6 +259,9 @@ func (s *Service) CancelTask(ctx context.Context, req *connect.Request[appv1.Can
 	if err != nil {
 		return nil, fromOrchestrator(ctx, s.Log, "cancel task", err)
 	}
+	s.Audit.Record(auditlog.Event{TenantID: c.TenantID.String(), Actor: phone(c.SessionID), OnBehalfOf: c.UserID,
+		Action: "task.cancelled", TargetType: "task", TargetID: req.Msg.GetTaskId(), Outcome: auditlog.Success,
+		RequestID: requestID(ctx)})
 	s.Log.Info("task cancelled from the app", "request_id", requestID(ctx), "task_id", req.Msg.GetTaskId())
 	return connect.NewResponse(&appv1.CancelTaskResponse{Task: taskProto(resp.GetTask())}), nil
 }
@@ -291,6 +315,10 @@ func (s *Service) SubmitApproval(ctx context.Context, req *connect.Request[appv1
 		return nil, reasoned(connect.CodeNotFound, appv1.ErrorReason_ERROR_REASON_APPROVAL_NOT_FOUND,
 			"the approval is unknown or has expired")
 	case codes.PermissionDenied:
+		s.Audit.Record(auditlog.Event{TenantID: c.TenantID.String(), Actor: phone(c.SessionID), OnBehalfOf: c.UserID,
+			Action: "command.approval_submitted", TargetType: "approval", TargetID: m.GetApprovalId(),
+			Outcome: auditlog.Denied, Reason: "rejected_by_computer", RequestID: requestID(ctx),
+			Details: map[string]string{"approver_id": m.GetApproverId()}})
 		s.Log.Warn("approval rejected by the device", "request_id", requestID(ctx), "approval_id", m.GetApprovalId(),
 			"approver_id", m.GetApproverId())
 		return nil, reasoned(connect.CodePermissionDenied, appv1.ErrorReason_ERROR_REASON_APPROVAL_REJECTED,
@@ -298,6 +326,9 @@ func (s *Service) SubmitApproval(ctx context.Context, req *connect.Request[appv1
 	default:
 		return nil, fromOrchestrator(ctx, s.Log, "submit approval", err)
 	}
+	s.Audit.Record(auditlog.Event{TenantID: c.TenantID.String(), Actor: phone(c.SessionID), OnBehalfOf: c.UserID,
+		Action: "command.approval_submitted", TargetType: "approval", TargetID: m.GetApprovalId(),
+		Outcome: auditlog.Success, RequestID: requestID(ctx), Details: map[string]string{"approver_id": m.GetApproverId()}})
 	s.Log.Info("command approved from the app", "request_id", requestID(ctx), "approval_id", m.GetApprovalId(),
 		"approver_id", m.GetApproverId())
 	return connect.NewResponse(&appv1.SubmitApprovalResponse{Output: resp.GetOutput()}), nil

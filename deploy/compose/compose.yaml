@@ -37,6 +37,7 @@ services:
       ORCH_DB_PASSWORD: ${ORCH_DB_PASSWORD:?missing; run deploy/compose/scripts/init-env.sh}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?missing; run deploy/compose/scripts/init-env.sh}
       DASHBOARD_DB_PASSWORD: ${DASHBOARD_DB_PASSWORD:?missing; run deploy/compose/scripts/init-env.sh}
+      AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:?missing; run deploy/compose/scripts/init-env.sh}
     volumes:
       # PostgreSQL 18+ images keep data under /var/lib/postgresql/<major>/.
       - postgres-data:/var/lib/postgresql

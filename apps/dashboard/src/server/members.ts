@@ -4,7 +4,8 @@ import { z } from 'zod'
 
 import type { InvitationView, MemberView } from '@/lib/types'
 
-import type { Access } from './access'
+import { auditDenied, type Access } from './access'
+import { audit, auditJoined, auditWorkspaceCreated, person } from './audit'
 import { newInvitationToken, workspaceNameSchema } from './auth/passkeys'
 import type { Session } from './auth/session'
 import { config } from './config'
@@ -49,9 +50,10 @@ export async function createInvitation(
   role: z.infer<typeof roleSchema>,
 ): Promise<{ url: string; expireTime: string }> {
   const { token, hash } = newInvitationToken()
+  const invitationId = uuidv7()
   await store.createInvitation(db(), {
     tokenHash: hash,
-    invitationId: uuidv7(),
+    invitationId,
     workspaceId: access.workspace.workspaceId,
     role,
     createdBy: access.session.userId,
@@ -61,6 +63,14 @@ export async function createInvitation(
     { userId: access.session.userId, workspaceId: access.workspace.workspaceId, role },
     'invitation created',
   )
+  audit({
+    tenantId: access.workspace.workspaceId,
+    actor: person(access.session.userId),
+    action: 'workspace.member_invited',
+    targetType: 'invitation',
+    targetId: invitationId,
+    details: { role },
+  })
   return {
     url: new URL(`/invite/${token}`, config().origin).toString(),
     expireTime: new Date(Date.now() + INVITATION_TTL_MS).toISOString(),
@@ -73,6 +83,13 @@ export async function revokeInvitation(access: Access, invitationId: string): Pr
     { userId: access.session.userId, workspaceId: access.workspace.workspaceId, invitationId },
     'invitation revoked',
   )
+  audit({
+    tenantId: access.workspace.workspaceId,
+    actor: person(access.session.userId),
+    action: 'workspace.invitation_revoked',
+    targetType: 'invitation',
+    targetId: invitationId,
+  })
 }
 
 /** Changes a member's role (owners only); the workspace always keeps an owner. */
@@ -86,6 +103,14 @@ export async function changeRole(
     { userId: access.session.userId, workspaceId: access.workspace.workspaceId, memberId: userId, role },
     'member role changed',
   )
+  audit({
+    tenantId: access.workspace.workspaceId,
+    actor: person(access.session.userId),
+    action: 'workspace.member_role_changed',
+    targetType: 'user',
+    targetId: userId,
+    details: { role },
+  })
 }
 
 /**
@@ -94,35 +119,42 @@ export async function changeRole(
  */
 export async function removeMember(access: Access, userId: string): Promise<void> {
   if (access.workspace.role !== 'owner' && userId !== access.session.userId) {
+    auditDenied(access, 'owner_required')
     throw new Problem('forbidden', 'Only owners of the workspace can remove members.')
   }
   await withTx(db(), (tx) => store.removeMember(tx, access.workspace.workspaceId, userId))
+  const left = userId === access.session.userId
   log.info(
     { userId: access.session.userId, workspaceId: access.workspace.workspaceId, memberId: userId },
-    userId === access.session.userId ? 'member left' : 'member removed',
+    left ? 'member left' : 'member removed',
   )
+  audit({
+    tenantId: access.workspace.workspaceId,
+    actor: person(access.session.userId),
+    action: left ? 'workspace.member_left' : 'workspace.member_removed',
+    targetType: 'user',
+    targetId: userId,
+  })
 }
 
 /** A new workspace owned by the user. */
 export async function createWorkspace(session: Session, name: string): Promise<string> {
   const workspaceId = uuidv7()
+  const workspaceName = workspaceNameSchema.parse(name)
   await withTx(db(), (tx) =>
-    store.createWorkspace(tx, {
-      workspaceId,
-      name: workspaceNameSchema.parse(name),
-      ownerId: session.userId,
-    }),
+    store.createWorkspace(tx, { workspaceId, name: workspaceName, ownerId: session.userId }),
   )
   log.info({ userId: session.userId, workspaceId }, 'workspace created')
+  auditWorkspaceCreated(session.userId, workspaceId, workspaceName)
   return workspaceId
 }
 
 /** The signed-in user joins the workspace of an invitation. */
 export async function joinWithInvitation(session: Session, token: string): Promise<string> {
-  const { workspaceId } = await withTx(db(), (tx) =>
-    store.acceptInvitation(tx, sha256(token), session.userId),
-  )
+  const joined = await withTx(db(), (tx) => store.acceptInvitation(tx, sha256(token), session.userId))
+  const { workspaceId } = joined
   log.info({ userId: session.userId, workspaceId }, 'joined a workspace by invitation')
+  auditJoined(session.userId, joined)
   return workspaceId
 }
 

@@ -1,0 +1,25 @@
+# Development authorization policy: which mTLS client identity (the URI SAN
+# of its certificate) may call which audit RPC. Anything not listed is denied.
+# Production policies are deployed per environment, not from this file.
+
+# Services record what they did; none of them can read the trail back.
+[[principal]]
+id = "spiffe://jarvis.local/vault"
+allow = ["Record"]
+
+[[principal]]
+id = "spiffe://jarvis.local/app-api"
+allow = ["Record"]
+
+[[principal]]
+id = "spiffe://jarvis.local/mcp-router"
+allow = ["Record"]
+
+[[principal]]
+id = "spiffe://jarvis.local/orchestrator"
+allow = ["Record"]
+
+# Dashboard backend: records its users' actions, and shows and verifies the trail.
+[[principal]]
+id = "spiffe://jarvis.local/dashboard-api"
+allow = ["Record", "ListEvents", "VerifyChain"]

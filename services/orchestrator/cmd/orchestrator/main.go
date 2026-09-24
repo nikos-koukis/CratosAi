@@ -27,6 +27,7 @@ import (
 	knowledgev1 "jarvis.internal/gen/go/jarvis/knowledge/v1"
 	mcpv1 "jarvis.internal/gen/go/jarvis/mcp/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/libs/go/mtls"
 	"jarvis.internal/libs/go/vaultclient"
 	"jarvis.internal/orchestrator/internal/clients"
@@ -112,10 +113,27 @@ func serve(cfg config.Config, logger *slog.Logger) error {
 	defer devices.Close()
 
 	m := metrics.New()
+	var audit *auditlog.Recorder
+	if cfg.Audit.Addr != "" {
+		recorder, closeAudit, err := auditlog.Dial(cfg.Audit.Addr, cfg.ClientCert, cfg.ClientKey, cfg.ClientCA,
+			cfg.Audit.ServerName, logger)
+		if err != nil {
+			return fmt.Errorf("audit client: %w", err)
+		}
+		audit = recorder
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			closeAudit(ctx)
+		}()
+	} else {
+		logger.Warn("no audit service configured (ORCH_AUDIT_ADDR): actions are not audited")
+	}
+
 	eng := engine.New(engine.Deps{
 		Store: st, Keys: vault, Sealer: vault, MCP: mcpv1.NewMcpRouterServiceClient(mcpConn),
 		Knowledge: knowledgev1.NewKnowledgeServiceClient(knowledgeConn), Agent: agent, Devices: devices,
-		Metrics: m, Log: logger,
+		Metrics: m, Log: logger, Audit: audit,
 	}, engine.Options{
 		OpenAIModel: cfg.OpenAIModel, XAIModel: cfg.XAIModel, Workers: cfg.Workers, TaskMaxSteps: cfg.TaskMaxSteps,
 		TaskTimeout: cfg.TaskTimeout, ToolTimeout: cfg.ToolTimeout, ConfirmationTTL: cfg.ConfirmationTTL,

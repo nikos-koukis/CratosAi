@@ -21,6 +21,7 @@ import (
 	knowledgev1 "jarvis.internal/gen/go/jarvis/knowledge/v1"
 	mcpv1 "jarvis.internal/gen/go/jarvis/mcp/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/libs/go/vaultclient"
 	"jarvis.internal/orchestrator/internal/metrics"
 	"jarvis.internal/orchestrator/internal/store"
@@ -43,6 +44,8 @@ type Deps struct {
 	Devices   DeviceClients
 	Metrics   *metrics.Metrics
 	Log       *slog.Logger
+	// Audit records confirmations, device commands and tasks (nil: nothing).
+	Audit *auditlog.Recorder
 }
 
 // Options are the engine's limits and models.

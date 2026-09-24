@@ -100,4 +100,21 @@ CREATE TABLE invitations (
 CREATE INDEX invitations_workspace ON invitations (workspace_id);
 `,
   },
+  {
+    version: '0002_mcp_authorizations',
+    sql: `
+-- OAuth authorizations of MCP servers in progress. The MCP router knows the
+-- state too; this binds it to the user who started it, so a callback link
+-- opened in someone else's session does nothing.
+CREATE TABLE mcp_authorizations (
+    state_hash     bytea       PRIMARY KEY,
+    user_id        uuid        NOT NULL REFERENCES users ON DELETE CASCADE,
+    workspace_id   uuid        NOT NULL REFERENCES workspaces ON DELETE CASCADE,
+    integration_id uuid        NOT NULL,
+    create_time    timestamptz NOT NULL DEFAULT now(),
+    expire_time    timestamptz NOT NULL
+);
+CREATE INDEX mcp_authorizations_expiry ON mcp_authorizations (expire_time);
+`,
+  },
 ]

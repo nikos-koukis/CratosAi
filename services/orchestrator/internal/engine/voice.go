@@ -18,6 +18,7 @@ import (
 	commonv1 "jarvis.internal/gen/go/jarvis/common/v1"
 	devicev1 "jarvis.internal/gen/go/jarvis/device/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/orchestrator/internal/store"
 )
 
@@ -216,6 +217,8 @@ func (e *Engine) askConfirmation(ctx context.Context, c caller, p *pause) (strin
 		return failure("could not prepare the action")
 	}
 	e.Metrics.Confirmations.WithLabelValues("requested").Inc()
+	e.audit(ctx, c.tenant, c.user, auditlog.Assistant(), "action.confirmation_requested", "confirmation",
+		confirmation.ID.String(), auditlog.Success, "", actionDetails(p.action))
 	return output(map[string]string{
 		"status":          "needs_confirmation",
 		"confirmation_id": confirmation.ID.String(),
@@ -239,6 +242,8 @@ func (e *Engine) startTask(ctx context.Context, c caller, goal string) (string, 
 		return failure("could not start the task")
 	}
 	e.signal()
+	e.audit(ctx, c.tenant, c.user, auditlog.Assistant(), "task.started", "task", t.ID.String(), auditlog.Success, "",
+		map[string]string{"kind": t.Kind})
 	e.Log.Info("task started", "request_id", requestID(ctx), "task_id", t.ID, "conversation_id", c.conversation.UUID)
 	return output(map[string]string{"status": "started", "task_id": t.ID.String(),
 		"note": "Tell the user you are on it and will report back."}), false
@@ -258,6 +263,10 @@ func (e *Engine) settle(ctx context.Context, c caller, id uuid.UUID, confirm boo
 		outcome = "confirmed"
 	}
 	e.Metrics.Confirmations.WithLabelValues(outcome).Inc()
+	var said action
+	_ = json.Unmarshal(conf.Action, &said)
+	e.audit(ctx, c.tenant, c.user, auditlog.User(c.user), map[bool]string{true: "action.confirmed",
+		false: "action.declined"}[confirm], "confirmation", id.String(), auditlog.Success, "", actionDetails(&said))
 	e.Log.Info("action "+outcome, "request_id", requestID(ctx), "confirmation_id", id,
 		"conversation_id", c.conversation.UUID)
 
@@ -305,6 +314,10 @@ func (e *Engine) refuse(ctx context.Context, c caller, id uuid.UUID, confirm boo
 	}
 	if confirm {
 		e.Metrics.Confirmations.WithLabelValues("refused").Inc()
+		// Jarvis tried to confirm on its own (e.g. told to by a tool result):
+		// the user never answered.
+		e.audit(ctx, c.tenant, c.user, auditlog.Assistant(), "action.confirmation_blocked", "confirmation",
+			id.String(), auditlog.Denied, "no_user_answer", nil)
 		e.Log.Warn("confirmation refused: no user turn since the question", "request_id", requestID(ctx),
 			"confirmation_id", id, "conversation_id", c.conversation.UUID, "turn", c.turn)
 		return failure("The user has not answered yet. Ask them and wait for their reply before calling confirm_action.")
@@ -326,6 +339,8 @@ func (e *Engine) awaitApproval(ctx context.Context, c caller, p *pause) (string,
 		return failure("could not queue the command")
 	}
 	e.notify(ctx, t, store.NotifyApproval)
+	e.audit(ctx, c.tenant, c.user, auditlog.Assistant(), "command.approval_requested", "task", t.ID.String(),
+		auditlog.Success, "", map[string]string{"device": p.approval.device.Name, "program": p.approval.command.GetProgram()})
 	return output(map[string]string{"status": "waiting_for_approval", "task_id": t.ID.String(),
 		"note": "The command needs the user's approval on their phone; its result will be reported when it runs."}), false
 }
@@ -355,7 +370,7 @@ func approvalExpiry(req *devicev1.ApprovalRequired) time.Time {
 // dropApproval ends an approval that can no longer be used (rejected by the
 // device, or expired): the command did not run. A command task fails; an
 // agent task gets the failure as the tool's result and continues.
-func (e *Engine) dropApproval(ctx context.Context, a store.DeviceApproval, why string) {
+func (e *Engine) dropApproval(ctx context.Context, a store.DeviceApproval, why, reason string) {
 	if err := e.Store.DeleteApproval(ctx, a.ApprovalID); err != nil {
 		e.Log.Error("cannot delete a spent approval", "approval_id", a.ApprovalID, "error", err)
 	}
@@ -371,6 +386,8 @@ func (e *Engine) dropApproval(ctx context.Context, a store.DeviceApproval, why s
 		return
 	}
 	e.Log.Info("approval spent without running the command", "approval_id", a.ApprovalID, "task_id", a.TaskID)
+	e.audit(ctx, t.TenantID.String(), t.UserID, auditlog.Assistant(), "command.not_run", "approval", a.ApprovalID,
+		auditlog.Denied, reason, nil)
 	if t.Kind == store.KindCommand {
 		e.Metrics.Tasks.WithLabelValues(store.TaskFailed).Inc()
 		e.finished(ctx, t)
@@ -411,17 +428,19 @@ func (e *Engine) SubmitApproval(ctx context.Context, tenant, user, approvalID, a
 			// The device allows one attempt per approval: this one is spent.
 			e.dropApproval(context.WithoutCancel(ctx), a, "The computer rejected the approval ("+
 				truncate(st.Message(), 200)+"), so the command did not run. The user's phone may not be one of its "+
-				"approvers; ask again once that is fixed.")
+				"approvers; ask again once that is fixed.", "approval_rejected")
 			return "", fmt.Errorf("%w: %s", ErrApprovalRejected, truncate(st.Message(), 300))
 		}
 		return "", err
 	}
 	if resp.GetResult() == nil {
-		e.dropApproval(context.WithoutCancel(ctx), a, "The computer asked for another approval; the command did not run.")
+		e.dropApproval(context.WithoutCancel(ctx), a, "The computer asked for another approval; the command did not run.",
+			"approval_asked_again")
 		return "", fmt.Errorf("%w: the device asked for approval again", ErrApprovalRejected)
 	}
-	out, _ := commandOutput(resp.GetResult())
+	out, failed := commandOutput(resp.GetResult())
 	_ = e.Store.DeleteApproval(ctx, approvalID)
+	e.auditCommand(ctx, tenant, user, device.Name, command.GetProgram(), failed, true)
 
 	t, err := e.Store.ResumeTask(ctx, a.TaskID, func(t *store.Task) error {
 		if t.Kind == store.KindCommand {

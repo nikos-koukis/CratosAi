@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { cache } from 'react'
 
+import { auditAccount } from '../audit'
 import { config } from '../config'
 import { randomToken, sha256, uuidv7 } from '../ids'
 import { Problem } from '../problem'
@@ -103,11 +104,19 @@ export async function startSession(userId: string, recovered: boolean): Promise<
 /** Signs out this browser. */
 export async function endSession(): Promise<void> {
   const session = await currentSession()
-  if (session) await deleteSession(db(), session.sessionId)
+  if (session) {
+    await deleteSession(db(), session.sessionId)
+    await auditAccount(session.userId, { action: 'account.signed_out' })
+  }
   await clearCookie(cookieName('session'))
 }
 
 /** Signs out every other browser of the user; returns how many. */
 export async function endOtherSessions(session: Session): Promise<number> {
-  return deleteUserSessions(db(), session.userId, session.sessionId)
+  const ended = await deleteUserSessions(db(), session.userId, session.sessionId)
+  await auditAccount(session.userId, {
+    action: 'account.signed_out_elsewhere',
+    details: { sessions: String(ended) },
+  })
+  return ended
 }

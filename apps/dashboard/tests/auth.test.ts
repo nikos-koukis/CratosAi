@@ -260,6 +260,45 @@ describe('workspace access', () => {
   })
 })
 
+describe('audit', () => {
+  it('records sign-ins and account changes in each of the user’s workspaces', async () => {
+    const { recorder } = await import('@/server/audit')
+    const record = vi.spyOn(recorder(), 'record').mockImplementation(() => {})
+    try {
+      const { userId, code } = await userWithCode()
+      const [first, second] = [ids.uuidv7(), ids.uuidv7()]
+      await withTx(db.pool, async (tx) => {
+        await ws.createWorkspace(tx, { workspaceId: first, name: 'First', ownerId: userId })
+        await ws.createWorkspace(tx, { workspaceId: second, name: 'Second', ownerId: userId })
+      })
+
+      await passkeys.signInWithRecoveryCode(code)
+      const newCodes = await passkeys.regenerateRecoveryCodes(
+        await sessions.actionSession({ allowRecovered: true }),
+      )
+      await sessions.endSession()
+
+      const events = record.mock.calls.map(([e]) => e)
+      expect(events.map((e) => [e.action, e.tenantId]).sort()).toEqual(
+        [
+          ['account.recovery_code_used', first],
+          ['account.recovery_code_used', second],
+          ['account.recovery_codes_replaced', first],
+          ['account.recovery_codes_replaced', second],
+          ['account.signed_out', first],
+          ['account.signed_out', second],
+        ].sort(),
+      )
+      expect(events.every((e) => e.actor.id === userId)).toBe(true)
+      // Codes are secrets: never in the trail.
+      const text = JSON.stringify(events)
+      expect([code, ...newCodes].some((c) => text.includes(c))).toBe(false)
+    } finally {
+      record.mockRestore()
+    }
+  })
+})
+
 describe('rate limits', () => {
   it('stop guessing recovery codes', async () => {
     const results = []

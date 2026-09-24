@@ -3,11 +3,13 @@
 import { refresh } from 'next/cache'
 import { z } from 'zod'
 
-import type { ActionResult, KeyView, PairingView } from '@/lib/types'
+import type { ActionResult, ChainView, KeyView, PairingView } from '@/lib/types'
 import { actionWorkspace } from '@/server/access'
 import { runAction } from '@/server/action'
+import { verifyTrail } from '@/server/audit-trail'
 import { actionSession } from '@/server/auth/session'
 import { createPairing, revokeDevice, revokeDeviceSchema } from '@/server/devices'
+import { connect, connectSchema, disconnect, reconnect } from '@/server/integrations'
 import { addKey, addKeySchema, revokeKey, revokeKeySchema } from '@/server/keys'
 import {
   changeRole,
@@ -118,4 +120,38 @@ export async function joinAction(token: unknown): Promise<ActionResult<string>> 
   return runAction('workspaces.join', async () =>
     joinWithInvitation(await actionSession(), z.string().min(1).max(100).parse(token)),
   )
+}
+
+/** Connects an MCP server for the signed-in user (every member manages their own). */
+export async function connectAction(
+  workspaceId: string,
+  input: unknown,
+): Promise<ActionResult<{ authorizationUrl: string | null; name: string }>> {
+  return runAction('integrations.connect', async () => {
+    const result = await connect(await actionWorkspace(workspaceId), connectSchema.parse(input))
+    if (!result.authorizationUrl) refresh()
+    return result
+  })
+}
+
+export async function reconnectAction(
+  workspaceId: string,
+  integrationId: unknown,
+): Promise<ActionResult<string>> {
+  return runAction('integrations.reconnect', async () =>
+    reconnect(await actionWorkspace(workspaceId), z.uuid().parse(integrationId)),
+  )
+}
+
+export async function disconnectAction(workspaceId: string, integrationId: unknown): Promise<ActionResult> {
+  return runAction('integrations.disconnect', async () => {
+    await disconnect(await actionWorkspace(workspaceId), z.uuid().parse(integrationId))
+    refresh()
+    return null
+  })
+}
+
+/** Checks the workspace's audit trail for tampering (owners only). */
+export async function verifyTrailAction(workspaceId: string): Promise<ActionResult<ChainView>> {
+  return runAction('audit.verify', async () => verifyTrail(await actionWorkspace(workspaceId, 'owner')))
 }

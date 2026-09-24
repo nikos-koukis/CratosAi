@@ -13,12 +13,13 @@ A voice-first, multi-tenant AI agent platform where tenants bring their own LLM 
 | [`services/knowledge/`](services/knowledge/) | Knowledge service (Python): long-term memory, GraphRAG over Neo4j + Qdrant with local embeddings |
 | [`services/orchestrator/`](services/orchestrator/) | Orchestrator (Go): the voice model's tools, spoken confirmations, durable background tasks, memory |
 | [`services/app-api/`](services/app-api/) | App API (Go): pairing and sessions for the apps, their tasks and command approvals (Connect over HTTPS) |
+| [`services/audit/`](services/audit/) | Audit service (Go): the append-only, hash-chained audit trail every service records to |
 | [`apps/ios/`](apps/ios/) | iPhone app (SwiftUI): voice, tasks, and Face ID approvals from the Secure Enclave; JarvisKit package + `jarvis-cli` |
-| [`apps/dashboard/`](apps/dashboard/) | Web dashboard (Next.js): passkey sign-in, workspaces and members, provider keys, iPhone pairing |
+| [`apps/dashboard/`](apps/dashboard/) | Web dashboard (Next.js): passkey sign-in, workspaces and members, provider keys, iPhone pairing, MCP integrations, the audit trail |
 | [`services/agent/`](services/agent/) | Agent sidecar (Python, LangGraph): the orchestrator's LLM decisions and memory extraction, over a Unix socket |
 | [`daemons/mac-daemon/`](daemons/mac-daemon/) | Local daemon (Rust): sandboxed, approval-gated commands on the user's Mac |
 | [`libs/rust/jarvis-common/`](libs/rust/jarvis-common/) | Shared Rust code: mTLS identity, RPC authorization, logging |
-| [`libs/go/`](libs/go/) | Shared Go code: mTLS identity and RPC authorization, Vault client, user tokens |
+| [`libs/go/`](libs/go/) | Shared Go code: mTLS identity and RPC authorization, Vault client, user tokens, audit recorder |
 | [`gen/go/`](gen/go/), [`gen/python/`](gen/python/), [`gen/swift/`](gen/swift/), [`gen/ts/`](gen/ts/) | Go, Python, Swift and TypeScript code generated from `proto/` (`pnpm nx run proto:generate`) |
 | [`deploy/compose/`](deploy/compose/) | Local infrastructure: PostgreSQL, DragonflyDB, Neo4j, Qdrant |
 
@@ -39,6 +40,7 @@ pnpm check                    # lint + format-check + build, every project
 pnpm test                     # unit + integration tests (needs Docker)
 pnpm infra:test               # smoke-test the local infrastructure
 pnpm nx run vault:serve       # run the Vault against the local infrastructure
+pnpm nx run audit:serve       # run the audit service (needs the Vault's dev CA once)
 pnpm nx run mcp-router:serve  # run the MCP router (needs the Vault)
 pnpm nx run knowledge:serve   # run the knowledge service (needs the Vault's dev CA once)
 pnpm nx run agent:serve       # run the agent sidecar (Unix socket)
@@ -60,7 +62,7 @@ tools/dev-stack.sh logs app-api
 tools/dev-stack.sh down
 ```
 
-- The dashboard is on http://localhost:3000. Create an account with a passkey, and store the fake key `sk-dev-fake-0001` as your workspace's OpenAI key: the fake providers accept only that one. Then pair the iPhone from Devices.
+- The dashboard is on http://localhost:3000. Create an account with a passkey, and store the fake key `sk-dev-fake-0001` as your workspace's OpenAI key: the fake providers accept only that one. Then pair the iPhone from Devices, and connect the fake MCP server (`http://127.0.0.1:8931/mcp`, which the stack runs) from Integrations.
 - The fake providers are `jarvis-fake-llm` (Responses API) and `voicectl echo-provider` (realtime voice). They accept only the development tenant's fake key, which the script stores in the Vault.
 - `FAKE_LLM_DELAY=5` makes background tasks slow enough to finish after you hang up.
 - To run the services one by one, see the [orchestrator README](services/orchestrator/README.md#development).

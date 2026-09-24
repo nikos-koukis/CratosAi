@@ -6,8 +6,9 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-# Regenerated when a newer service identity (e.g. mcp-router) is missing.
-[[ -f .dev/certs/mcp-router.pem ]] || scripts/dev-certs.sh .dev/certs
+# Regenerated when a newer service identity (e.g. the Vault's own) is missing;
+# the other services then reissue theirs from the new CA.
+[[ -f .dev/certs/vault-client.pem ]] || scripts/dev-certs.sh .dev/certs
 
 COMPOSE_ENV=../../deploy/compose/.env
 # Read single keys; never `source` the file.
@@ -32,5 +33,9 @@ export VAULT_TLS_CLIENT_CA="${VAULT_TLS_CLIENT_CA:-.dev/certs/ca.pem}"
 export VAULT_AUTHZ_POLICY="${VAULT_AUTHZ_POLICY:-config/authz.dev.toml}"
 export VAULT_ENABLE_REFLECTION="${VAULT_ENABLE_REFLECTION:-true}"
 export VAULT_LOG_FORMAT="${VAULT_LOG_FORMAT:-pretty}"
+# The audit service (services/audit); events wait while it is not running.
+export VAULT_AUDIT_ADDR="${VAULT_AUDIT_ADDR:-127.0.0.1:50056}"
+export VAULT_AUDIT_TLS_CERT="${VAULT_AUDIT_TLS_CERT:-.dev/certs/vault-client.pem}"
+export VAULT_AUDIT_TLS_KEY="${VAULT_AUDIT_TLS_KEY:-.dev/certs/vault-client-key.pem}"
 
 exec cargo run --quiet -p jarvis-vault

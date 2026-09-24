@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	mcpv1 "jarvis.internal/gen/go/jarvis/mcp/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/libs/go/mtls"
 	"jarvis.internal/libs/go/vaultclient"
 	"jarvis.internal/mcp-router/internal/catalog"
@@ -115,6 +116,23 @@ func serve(cfg config.Config, logger *slog.Logger) error {
 	lim := limits.New(rdb, cfg.RatePerTenant, cfg.RatePerIntegration, cfg.ToolsCacheTTL, logger)
 	pool := upstream.NewPool(guard.StreamingClient(), version, sessionIdle)
 	defer pool.Close()
+	var audit *auditlog.Recorder
+	if cfg.AuditAddr != "" {
+		recorder, closeAudit, err := auditlog.Dial(cfg.AuditAddr, cfg.VaultCert, cfg.VaultKey, cfg.VaultCA,
+			cfg.AuditServerName, logger)
+		if err != nil {
+			return fmt.Errorf("audit client: %w", err)
+		}
+		audit = recorder
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			closeAudit(ctx)
+		}()
+	} else {
+		logger.Warn("no audit service configured (MCP_AUDIT_ADDR): tool calls are not audited")
+	}
+
 	service := router.New(router.Deps{
 		Store: st,
 		Flow: &oauthflow.Flow{
@@ -127,6 +145,7 @@ func serve(cfg config.Config, logger *slog.Logger) error {
 		Guard:   guard,
 		Metrics: m,
 		Log:     logger,
+		Audit:   audit,
 	}, router.Options{
 		AllowCustomServers: cfg.AllowCustom,
 		DefaultCallTimeout: cfg.DefaultCallTimeout,

@@ -18,7 +18,14 @@ pub mod jarvis {
             tonic::include_proto!("jarvis.vault.v1");
         }
     }
+    pub mod audit {
+        pub mod v1 {
+            tonic::include_proto!("jarvis.audit.v1");
+        }
+    }
 }
+
+pub use jarvis::audit::v1 as audit_v1;
 
 pub use jarvis::common::v1 as common_v1;
 pub use jarvis::vault::v1 as vault_v1;

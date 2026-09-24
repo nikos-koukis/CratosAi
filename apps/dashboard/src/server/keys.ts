@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { PROVIDERS, providerLabel, type KeyView, type ProviderId } from '@/lib/types'
 
 import type { Access } from './access'
+import { audit, person } from './audit'
 import { nameSchema } from './auth/passkeys'
 import { serviceProblem, vault } from './grpc/clients'
 import { uuidv7 } from './ids'
@@ -104,6 +105,18 @@ export async function addKey(
       },
       'provider key stored',
     )
+    audit({
+      tenantId: access.workspace.workspaceId,
+      actor: person(access.session.userId),
+      action: 'key.stored',
+      targetType: 'provider_key',
+      targetId: key?.keyId,
+      details: {
+        provider: input.provider,
+        label: input.label,
+        ...(replacedKey ? { replaced_key: replacedKey.keyId } : {}),
+      },
+    })
     return key && view(key)
   } catch (error) {
     if (ConnectError.from(error).code === Code.AlreadyExists && !input.replace) {
@@ -140,6 +153,14 @@ export async function revokeKey(access: Access, input: z.infer<typeof revokeKeyS
       },
       'provider key revoked',
     )
+    audit({
+      tenantId: access.workspace.workspaceId,
+      actor: person(access.session.userId),
+      action: 'key.revoked',
+      targetType: 'provider_key',
+      targetId: input.keyId,
+      details: { reason: input.reason },
+    })
   } catch (error) {
     serviceProblem(error, VAULT)
   }

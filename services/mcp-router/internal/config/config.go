@@ -35,6 +35,9 @@ type Config struct {
 	VaultCA         string
 	VaultCert       string
 	VaultKey        string
+	// The audit service (optional), with the same client identity as for the Vault.
+	AuditAddr       string
+	AuditServerName string
 
 	RedirectURI        string
 	ClientName         string
@@ -77,6 +80,7 @@ func Load(lookup Lookup) (Config, error) {
 		VaultCA:   r.required("MCP_VAULT_CA"),
 		VaultCert: r.required("MCP_VAULT_CERT"),
 		VaultKey:  r.required("MCP_VAULT_KEY"),
+		AuditAddr: r.str("MCP_AUDIT_ADDR", ""),
 
 		RedirectURI:        r.required("MCP_OAUTH_REDIRECT_URI"),
 		ClientName:         r.str("MCP_OAUTH_CLIENT_NAME", "Jarvis"),
@@ -92,6 +96,7 @@ func Load(lookup Lookup) (Config, error) {
 		LogLevel:  r.str("MCP_LOG_LEVEL", "info"),
 	}
 	c.VaultServerName = r.str("MCP_VAULT_SERVER_NAME", hostOf(c.VaultAddr))
+	c.AuditServerName = r.str("MCP_AUDIT_SERVER_NAME", hostOf(c.AuditAddr))
 
 	c.OAuthClients = map[string]catalog.ClientCredentials{}
 	for _, slug := range catalog.Slugs() {

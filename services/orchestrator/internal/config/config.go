@@ -40,6 +40,8 @@ type Config struct {
 	Vault      Endpoint
 	MCPRouter  Endpoint
 	Knowledge  Endpoint
+	// The audit service; optional (zero Addr: nothing is audited).
+	Audit Endpoint
 	// The LLM sidecar's Unix socket.
 	AgentSocket string
 
@@ -85,6 +87,7 @@ func Load(lookup Lookup) (Config, error) {
 		Vault:       r.endpoint("ORCH_VAULT"),
 		MCPRouter:   r.endpoint("ORCH_MCP_ROUTER"),
 		Knowledge:   r.endpoint("ORCH_KNOWLEDGE"),
+		Audit:       r.optionalEndpoint("ORCH_AUDIT"),
 		AgentSocket: r.required("ORCH_AGENT_SOCKET"),
 
 		OpenAIModel: r.str("ORCH_OPENAI_MODEL", "gpt-6-luna"),
@@ -158,6 +161,14 @@ func (r *reader) required(name string) string {
 
 func (r *reader) endpoint(prefix string) Endpoint {
 	addr := r.required(prefix + "_ADDR")
+	return Endpoint{Addr: addr, ServerName: r.str(prefix+"_SERVER_NAME", hostOf(addr))}
+}
+
+func (r *reader) optionalEndpoint(prefix string) Endpoint {
+	addr := r.str(prefix+"_ADDR", "")
+	if addr == "" {
+		return Endpoint{}
+	}
 	return Endpoint{Addr: addr, ServerName: r.str(prefix+"_SERVER_NAME", hostOf(addr))}
 }
 

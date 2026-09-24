@@ -33,7 +33,9 @@ import (
 	"jarvis.internal/app-api/internal/store"
 	appv1 "jarvis.internal/gen/go/jarvis/app/v1"
 	"jarvis.internal/gen/go/jarvis/app/v1/appv1connect"
+	auditv1 "jarvis.internal/gen/go/jarvis/audit/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
+	"jarvis.internal/libs/go/auditlog"
 )
 
 const (
@@ -138,6 +140,7 @@ type harness struct {
 	admin  *admin.Service
 	store  *store.Store
 	orch   *fakeOrchestrator
+	audit  *fakeAudit
 	key    ed25519.PrivateKey
 	tenant string
 	user   string
@@ -176,8 +179,11 @@ func newHarness(t *testing.T, opts ...func(*options)) *harness {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New()
 	st := store.New(db)
+	audit := &fakeAudit{}
+	recorder := auditlog.New(audit, log, auditlog.Options{FlushEvery: 10 * time.Millisecond})
+	t.Cleanup(func() { recorder.Close(context.Background()) })
 	service := &api.Service{Store: st, Minter: minter, Orchestrator: orchv1.NewOrchestratorServiceClient(conn),
-		Metrics: m, Log: log, VoiceURL: voiceURL, RefreshTTL: 30 * 24 * time.Hour}
+		Metrics: m, Log: log, VoiceURL: voiceURL, RefreshTTL: 30 * 24 * time.Hour, Audit: recorder}
 	path, handler := appv1connect.NewAppServiceHandler(service,
 		connect.WithInterceptors(api.Logging(log, m), api.RateLimit(ratelimit.New(o.burst, 60), m, log),
 			api.Auth(minter, st, log)),
@@ -192,7 +198,7 @@ func newHarness(t *testing.T, opts ...func(*options)) *harness {
 		_ = conn.Close()
 		grpcServer.Stop()
 	})
-	return &harness{
+	return &harness{audit: audit,
 		client: appv1connect.NewAppServiceClient(server.Client(), server.URL),
 		server: server,
 		admin: &admin.Service{Store: st, Metrics: m, Log: log, PublicURL: publicURL,
@@ -256,4 +262,48 @@ func wantReason(t *testing.T, err error, code connect.Code, reason appv1.ErrorRe
 		}
 	}
 	t.Fatalf("error %v lacks reason %v", err, reason)
+}
+
+// fakeAudit collects what the service records.
+type fakeAudit struct {
+	mu     sync.Mutex
+	events []*auditv1.Event
+}
+
+func (f *fakeAudit) Record(_ context.Context, req *auditv1.RecordRequest, _ ...grpc.CallOption) (*auditv1.RecordResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, req.GetEvents()...)
+	return &auditv1.RecordResponse{Recorded: int32(len(req.GetEvents()))}, nil
+}
+
+func (f *fakeAudit) ListEvents(context.Context, *auditv1.ListEventsRequest, ...grpc.CallOption) (*auditv1.ListEventsResponse, error) {
+	return nil, errors.New("not used")
+}
+
+func (f *fakeAudit) VerifyChain(context.Context, *auditv1.VerifyChainRequest, ...grpc.CallOption) (*auditv1.VerifyChainResponse, error) {
+	return nil, errors.New("not used")
+}
+
+// waitFor returns the recorded events with this action, waiting for at least n.
+func (f *fakeAudit) waitFor(t *testing.T, action string, n int) []*auditv1.Event {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		f.mu.Lock()
+		var found []*auditv1.Event
+		for _, e := range f.events {
+			if e.GetAction() == action {
+				found = append(found, e)
+			}
+		}
+		f.mu.Unlock()
+		if len(found) >= n {
+			return found
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no %d %q audit events (got %d)", n, action, len(found))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }

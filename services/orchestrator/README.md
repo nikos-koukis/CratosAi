@@ -123,6 +123,7 @@ Everything is read from `ORCH_*` environment variables. See [`internal/config/co
 | `ORCH_DATABASE_URL` or `ORCH_DATABASE_URL_FILE` | required | PostgreSQL |
 | `ORCH_CLIENT_CERT`, `ORCH_CLIENT_KEY`, `ORCH_CLIENT_CA` | required | Its identity (`spiffe://jarvis.local/orchestrator`) towards the services below |
 | `ORCH_VAULT_ADDR`, `ORCH_MCP_ROUTER_ADDR`, `ORCH_KNOWLEDGE_ADDR` | required | Each with an optional `_SERVER_NAME` |
+| `ORCH_AUDIT_ADDR` | none: log only | The [audit service](../audit/) (optional `_SERVER_NAME`). Records confirmations asked, given, declined or blocked; background tasks started and finished; and device commands requested, run or not run. Never a task's goal or a command's arguments. Recording never delays a turn. |
 | `ORCH_AGENT_SOCKET` | required | The sidecar's Unix socket (at most 103 bytes) |
 | `ORCH_OPENAI_MODEL` / `ORCH_XAI_MODEL` | `gpt-6-luna` / `grok-4.6` | Background reasoning and memory extraction, with the tenant's key for the session's provider |
 | `ORCH_WORKERS`, `ORCH_TASK_MAX_STEPS`, `ORCH_TASK_TIMEOUT` | `8`, `12`, `10m` | |

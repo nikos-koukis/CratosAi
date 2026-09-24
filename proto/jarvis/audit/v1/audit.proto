@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package jarvis.audit.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AuditService keeps each tenant's audit trail: who did what, for whom,
+// through which service, when, and with what outcome.
+//
+// Security contract:
+//   * Callers authenticate with mutual TLS; a per-principal policy decides
+//     which RPCs each may use (services: Record; dashboard: also reading).
+//   * The source of an event is the caller's mTLS identity, set by the
+//     service; a producer cannot record events as another service.
+//   * The trail is append-only and tamper-evident: every event extends a
+//     per-tenant SHA-256 hash chain, which VerifyChain recomputes. Changing,
+//     removing or reordering stored events breaks the chain.
+//   * Events never carry secrets (keys, tokens, codes, message contents).
+//
+// Errors use canonical gRPC status codes.
+service AuditService {
+  // Record appends events to their tenants' trails. Idempotent on
+  // `event_id`: a retried batch records nothing twice.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT  an event is malformed (the whole batch is refused).
+  rpc Record(RecordRequest) returns (RecordResponse);
+
+  // ListEvents returns a tenant's events, newest first.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT  a filter or the page token is malformed.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+
+  // VerifyChain recomputes a tenant's hash chain from its first event.
+  rpc VerifyChain(VerifyChainRequest) returns (VerifyChainResponse);
+}
+
+// ActorKind is who performed an action.
+enum ActorKind {
+  // Default value. Invalid in Record.
+  ACTOR_KIND_UNSPECIFIED = 0;
+  // A person, by their user id.
+  ACTOR_KIND_USER = 1;
+  // Jarvis acting for a user (a tool call, a background task).
+  ACTOR_KIND_ASSISTANT = 2;
+  // A device: a paired phone, or a computer's daemon.
+  ACTOR_KIND_DEVICE = 3;
+  // A service acting on its own (e.g. the voice gateway reading a key).
+  ACTOR_KIND_SERVICE = 4;
+}
+
+// Outcome is how an action ended.
+enum Outcome {
+  // Default value. Invalid in Record.
+  OUTCOME_UNSPECIFIED = 0;
+  // It happened.
+  OUTCOME_SUCCESS = 1;
+  // It was attempted and failed.
+  OUTCOME_FAILURE = 2;
+  // It was refused (not allowed, not confirmed, reuse detected, ...).
+  OUTCOME_DENIED = 3;
+}
+
+// Actor identifies who performed an action.
+message Actor {
+  // Kind of actor. Required.
+  ActorKind kind = 1;
+  // User id, device id or service name; 1 to 128 printable ASCII.
+  string id = 2;
+}
+
+// Event is one audited action.
+message Event {
+  // Producer-assigned identifier (UUID, preferably v7). Required; makes
+  // Record idempotent.
+  string event_id = 1;
+  // Tenant (workspace) whose trail it belongs to (UUID). Required.
+  string tenant_id = 2;
+  // When it happened. Required; stored with microsecond precision.
+  google.protobuf.Timestamp occur_time = 3;
+  // Who did it. Required.
+  Actor actor = 4;
+  // The user it was done for, when not the actor itself (e.g. Jarvis
+  // calling a tool for a user). Empty otherwise.
+  string on_behalf_of = 5;
+  // What happened: 3 to 64 of a-z 0-9 . _ , e.g. "key.revoked".
+  string action = 6;
+  // What it was done to: a type (e.g. "provider_key") and an id; both
+  // optional, at most 64 and 128 printable ASCII.
+  string target_type = 7;
+  // Id of the target.
+  string target_id = 8;
+  // How it ended. Required.
+  Outcome outcome = 9;
+  // Why it failed or was refused, a short code (at most 64 characters).
+  string reason = 10;
+  // The request that caused it, for correlation (at most 128 characters).
+  string request_id = 11;
+  // Further facts, at most 16: keys of 1 to 32 a-z 0-9 _, values of at most
+  // 256 characters. Never secrets.
+  map<string, string> details = 12;
+
+  // Set by the audit service; ignored in Record.
+
+  // The recording service's mTLS identity, e.g. spiffe://jarvis.local/vault.
+  string source = 13;
+  // Position in the tenant's chain, from 1.
+  int64 sequence = 14;
+  // SHA-256 over the previous event's hash and this event.
+  bytes hash = 15;
+  // When the audit service stored it.
+  google.protobuf.Timestamp record_time = 16;
+}
+
+// RecordRequest is the input to AuditService.Record.
+message RecordRequest {
+  // 1 to 500 events, possibly of several tenants.
+  repeated Event events = 1;
+}
+
+// RecordResponse is the output of AuditService.Record.
+message RecordResponse {
+  // Events appended.
+  int32 recorded = 1;
+  // Events already recorded earlier (same event_id), skipped.
+  int32 duplicates = 2;
+}
+
+// ListEventsRequest is the input to AuditService.ListEvents.
+message ListEventsRequest {
+  // Tenant (UUID). Required.
+  string tenant_id = 1;
+  // Only events a user did or that were done for them (actor or
+  // on_behalf_of). Empty: everyone's.
+  string user_id = 2;
+  // Only actions starting with this, e.g. "key." or "member.".
+  string action_prefix = 3;
+  // Only events that happened at or after this time.
+  google.protobuf.Timestamp since = 4;
+  // Only events that happened before this time.
+  google.protobuf.Timestamp until = 5;
+  // 1 to 200; default 50.
+  int32 page_size = 6;
+  // From a previous response's next_page_token.
+  string page_token = 7;
+}
+
+// ListEventsResponse is the output of AuditService.ListEvents.
+message ListEventsResponse {
+  // The events, newest first.
+  repeated Event events = 1;
+  // For the next page; empty on the last one.
+  string next_page_token = 2;
+}
+
+// VerifyChainRequest is the input to AuditService.VerifyChain.
+message VerifyChainRequest {
+  // Tenant (UUID). Required.
+  string tenant_id = 1;
+}
+
+// VerifyChainResponse is the output of AuditService.VerifyChain.
+message VerifyChainResponse {
+  // True if every stored event is where the chain says, unchanged.
+  bool intact = 1;
+  // Events checked.
+  int64 events = 2;
+  // The first sequence number whose hash does not match; 0 when intact.
+  int64 first_broken_sequence = 3;
+  // Hash of the last event (the chain's head); empty when there are none.
+  bytes head_hash = 4;
+}

@@ -56,6 +56,7 @@ export MCP_VAULT_SERVER_NAME="${MCP_VAULT_SERVER_NAME:-localhost}"
 export MCP_VAULT_CA="${MCP_VAULT_CA:-$VAULT_CERTS/ca.pem}"
 export MCP_VAULT_CERT="${MCP_VAULT_CERT:-$VAULT_CERTS/mcp-router.pem}"
 export MCP_VAULT_KEY="${MCP_VAULT_KEY:-$VAULT_CERTS/mcp-router-key.pem}"
+export MCP_AUDIT_ADDR="${MCP_AUDIT_ADDR:-127.0.0.1:50056}"
 # `mcpctl connect` receives the OAuth redirect here.
 export MCP_OAUTH_REDIRECT_URI="${MCP_OAUTH_REDIRECT_URI:-http://127.0.0.1:8765/callback}"
 export MCP_ALLOW_CUSTOM_SERVERS="${MCP_ALLOW_CUSTOM_SERVERS:-true}"

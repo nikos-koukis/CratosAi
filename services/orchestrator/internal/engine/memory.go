@@ -194,6 +194,6 @@ func (e *Engine) expireApprovals(ctx context.Context) {
 		return
 	}
 	for _, a := range expired {
-		e.dropApproval(ctx, a, "Nobody approved the command in time, so it did not run.")
+		e.dropApproval(ctx, a, "Nobody approved the command in time, so it did not run.", "approval_expired")
 	}
 }

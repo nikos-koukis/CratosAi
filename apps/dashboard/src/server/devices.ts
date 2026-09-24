@@ -7,6 +7,7 @@ import { z } from 'zod'
 import type { DeviceView, PairingView } from '@/lib/types'
 
 import type { Access } from './access'
+import { audit, person } from './audit'
 import { appAdmin, serviceProblem } from './grpc/clients'
 import { log } from './log'
 
@@ -35,6 +36,11 @@ export async function createPairing(access: Access): Promise<PairingView> {
     { userId: access.session.userId, workspaceId: access.workspace.workspaceId },
     'pairing code issued',
   )
+  audit({
+    tenantId: access.workspace.workspaceId,
+    actor: person(access.session.userId),
+    action: 'device.pairing_code_issued',
+  })
   return {
     code: response.code,
     pairingUrl: response.pairingUrl,
@@ -79,6 +85,13 @@ export async function revokeDevice(access: Access, input: z.infer<typeof revokeD
       },
       'app session revoked',
     )
+    audit({
+      tenantId: access.workspace.workspaceId,
+      actor: person(access.session.userId),
+      action: 'device.signed_out',
+      targetType: 'app_session',
+      targetId: input.sessionId,
+    })
   } catch (error) {
     serviceProblem(error, APP_API)
   }

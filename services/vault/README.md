@@ -16,6 +16,7 @@ Stores tenant-owned LLM provider API keys (OpenAI, xAI, Anthropic, Google) and r
 - **mTLS is mandatory.** A caller's identity is the single URI SAN of its client certificate, e.g. `spiffe://jarvis.local/voice-gateway`. A TOML policy grants each identity specific RPCs, and everything else is denied.
 - **No existence oracle.** A key that belongs to another tenant is reported as `NOT_FOUND`, identical to a missing one.
 - **Every RPC is audited,** success or failure, as a structured log record with `target=audit`: caller, tenant, key id, request id and outcome. Secrets never appear.
+- **Key operations reach the [audit trail](../audit/README.md)** when `VAULT_AUDIT_ADDR` is set: `key.created`, `key.revoked` and `key.read`, with the calling service as the actor. A background task sends them in batches and retries while the audit service is down. The Vault keeps serving meanwhile, and anything it cannot deliver is logged (`audit event not delivered`). Listing keys and sealing or opening data stay in the log only.
 - **Hardening:**
   - Plaintext buffers are zeroized on drop.
   - Messages that carry secrets have a hand-written `Debug` that redacts them.
@@ -37,6 +38,10 @@ Stores tenant-owned LLM provider API keys (OpenAI, xAI, Anthropic, Google) and r
 | `VAULT_RUN_MIGRATIONS` | no | `true` | Applies `migrations/` at startup. |
 | `VAULT_ENABLE_REFLECTION` | no | `false` | gRPC reflection, for grpcurl. |
 | `VAULT_LOG_FORMAT` | no | `json` | `json` or `pretty`. The level is set with `RUST_LOG`. |
+| `VAULT_AUDIT_ADDR` | no | | The audit service (`host:port`). Without it, audit stays in the log. |
+| `VAULT_AUDIT_TLS_CERT`, `VAULT_AUDIT_TLS_KEY` | with `VAULT_AUDIT_ADDR` | | The Vault's client certificate towards the audit service (`spiffe://jarvis.local/vault`). |
+| `VAULT_AUDIT_CA` | no | `VAULT_TLS_CLIENT_CA` | CA bundle for the audit service's certificate. |
+| `VAULT_AUDIT_SERVER_NAME` | no | host of `VAULT_AUDIT_ADDR` | Name expected in the audit service's certificate. |
 
 A `_FILE` variant reads the secret from a file (Docker or Kubernetes secrets). Setting both variants is an error.
 
@@ -68,7 +73,7 @@ pnpm nx run vault:test   # unit tests + integration tests (needs Docker)
 pnpm nx run vault:lint   # clippy with -D warnings
 ```
 
-The integration tests (`tests/grpc_api.rs`) start a real PostgreSQL per test with testcontainers. They serve the Vault over mTLS with a throwaway PKI and exercise the API through the generated client. Covered: tenant isolation, authorization, rotation under concurrency, idempotency, crypto-shredding, listing, audit, and the absence of plaintext at rest.
+The integration tests (`tests/grpc_api.rs`) start a real PostgreSQL per test with testcontainers. They serve the Vault over mTLS with a throwaway PKI and exercise the API through the generated client. Covered: tenant isolation, authorization, rotation under concurrency, idempotency, crypto-shredding, listing, audit, and the absence of plaintext at rest. `tests/audit_sink.rs` runs the audit sink against a fake audit service: batching, retries during an outage, a refused event not losing the others, and the flush at shutdown.
 
 ## Known limitations
 
@@ -76,5 +81,5 @@ The integration tests (`tests/grpc_api.rs`) start a real PostgreSQL per test wit
 - **Crypto-shredding is logical.** PostgreSQL MVCC, WAL and backups keep old row versions until vacuum or expiry. That ciphertext stays unreadable only while the KEK stays secret.
 - **Single KEK.** There is no KEK rotation yet, and no KMS or HSM backend. `MasterKey::from_key_bytes` is the extension point for adding one.
 - **Zeroization is best-effort.** The gRPC, HTTP/2 and TLS layers briefly hold plaintext in buffers this code does not control.
-- **Audit lives in logs.** There is no queryable audit store yet; the dashboard audit trail needs one.
+- **Undelivered audit events are only logged.** Events still queued when the Vault stops (after a 10 s flush) or when its queue of 10,000 is full are written to the log, not persisted for a later retry.
 - **Idempotency records never expire.** No cleanup job exists yet.

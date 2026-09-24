@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,10 @@ import (
 	"jarvis.internal/mcp-router/internal/router"
 	"jarvis.internal/mcp-router/internal/store"
 	"jarvis.internal/mcp-router/internal/upstream"
+
+	"google.golang.org/grpc"
+	auditv1 "jarvis.internal/gen/go/jarvis/audit/v1"
+	"jarvis.internal/libs/go/auditlog"
 )
 
 const redirectURI = "http://127.0.0.1:9/callback"
@@ -89,6 +94,57 @@ type harness struct {
 	pool   *upstream.Pool
 	tenant string
 	user   string
+	audit  *fakeAudit
+}
+
+// fakeAudit collects what the router records.
+type fakeAudit struct {
+	mu     sync.Mutex
+	events []*auditv1.Event
+}
+
+func (f *fakeAudit) Record(_ context.Context, req *auditv1.RecordRequest, _ ...grpc.CallOption) (*auditv1.RecordResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, req.GetEvents()...)
+	return &auditv1.RecordResponse{}, nil
+}
+
+func (f *fakeAudit) ListEvents(context.Context, *auditv1.ListEventsRequest, ...grpc.CallOption) (*auditv1.ListEventsResponse, error) {
+	return nil, errors.New("not used")
+}
+
+func (f *fakeAudit) VerifyChain(context.Context, *auditv1.VerifyChainRequest, ...grpc.CallOption) (*auditv1.VerifyChainResponse, error) {
+	return nil, errors.New("not used")
+}
+
+// waitFor returns the recorded events with this action, waiting for at least n.
+func (f *fakeAudit) waitFor(t *testing.T, action string, n int) []*auditv1.Event {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		f.mu.Lock()
+		var found []*auditv1.Event
+		for _, e := range f.events {
+			if e.GetAction() == action {
+				found = append(found, e)
+			}
+		}
+		f.mu.Unlock()
+		if len(found) >= n {
+			return found
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no %d %q audit events (got %d)", n, action, len(found))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func (f *fakeAudit) all() []*auditv1.Event {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]*auditv1.Event(nil), f.events...)
 }
 
 func newHarness(t *testing.T, configure ...func(*harnessOptions)) *harness {
@@ -115,20 +171,23 @@ func newHarness(t *testing.T, configure ...func(*harnessOptions)) *harness {
 	lim := limits.New(rdb, 1000, opts.perIntegration, time.Minute, logger)
 	pool := upstream.NewPool(opts.guard.StreamingClient(), "test", time.Minute)
 	t.Cleanup(pool.Close)
+	audit := &fakeAudit{}
+	recorder := auditlog.New(audit, logger, auditlog.Options{FlushEvery: 10 * time.Millisecond})
+	t.Cleanup(func() { recorder.Close(context.Background()) })
 	svc := router.New(router.Deps{
 		Store: st,
 		Flow: &oauthflow.Flow{
 			Store: st, Sealer: sealer, Catalog: cat, HTTP: opts.guard.Client(10 * time.Second), Guard: opts.guard,
 			RedirectURI: redirectURI, ClientName: "Jarvis test", Log: logger,
 		},
-		Catalog: cat, Pool: pool, Limits: lim, Guard: opts.guard, Metrics: metrics.New(), Log: logger,
+		Catalog: cat, Pool: pool, Limits: lim, Guard: opts.guard, Metrics: metrics.New(), Log: logger, Audit: recorder,
 	}, router.Options{
 		AllowCustomServers: opts.allowCustom,
 		DefaultCallTimeout: 5 * time.Second,
 		MaxCallTimeout:     10 * time.Second,
 	})
 	return &harness{
-		svc: svc, env: env, store: st, redis: mr, sealer: sealer, pool: pool,
+		svc: svc, env: env, store: st, redis: mr, sealer: sealer, pool: pool, audit: audit,
 		tenant: uuid.NewString(), user: "user-" + uuid.NewString()[:8],
 	}
 }

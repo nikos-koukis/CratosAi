@@ -65,6 +65,20 @@ pub struct TlsPaths {
     pub client_ca: PathBuf,
 }
 
+/// Where the Vault records its audit events (the audit service), with its
+/// own client identity (spiffe://jarvis.local/vault).
+#[derive(Clone, Debug)]
+pub struct AuditTarget {
+    /// host:port of the audit service.
+    pub addr: String,
+    /// The name its certificate is checked against.
+    pub server_name: String,
+    pub cert: PathBuf,
+    pub key: PathBuf,
+    /// CA the audit service's certificate chains to.
+    pub ca: PathBuf,
+}
+
 #[derive(Debug)]
 pub struct Config {
     pub listen_addr: SocketAddr,
@@ -76,6 +90,8 @@ pub struct Config {
     pub tls: TlsPaths,
     pub authz_policy_path: PathBuf,
     pub enable_reflection: bool,
+    /// None: audit events only go to the log.
+    pub audit: Option<AuditTarget>,
 }
 
 impl Config {
@@ -115,6 +131,7 @@ impl Config {
             },
             authz_policy_path: vars.required("VAULT_AUTHZ_POLICY")?.into(),
             enable_reflection: vars.bool("VAULT_ENABLE_REFLECTION", false)?,
+            audit: vars.audit()?,
         })
     }
 }
@@ -160,6 +177,29 @@ where
             }
             (None, None) => Err(ConfigError::Missing(format!("{name} or {file_var}"))),
         }
+    }
+
+    /// The audit service, when VAULT_AUDIT_ADDR is set; its certificate and
+    /// key are then required, and the CA defaults to the client CA.
+    fn audit(&self) -> Result<Option<AuditTarget>, ConfigError> {
+        let Some(addr) = self.optional("VAULT_AUDIT_ADDR")? else {
+            return Ok(None);
+        };
+        let host = addr
+            .rsplit_once(':')
+            .filter(|(host, port)| !host.is_empty() && port.parse::<u16>().is_ok())
+            .map(|(host, _)| host.to_owned())
+            .ok_or_else(|| ConfigError::invalid("VAULT_AUDIT_ADDR", "must be host:port"))?;
+        Ok(Some(AuditTarget {
+            server_name: self.optional("VAULT_AUDIT_SERVER_NAME")?.unwrap_or(host),
+            addr,
+            cert: self.required("VAULT_AUDIT_TLS_CERT")?.into(),
+            key: self.required("VAULT_AUDIT_TLS_KEY")?.into(),
+            ca: match self.optional("VAULT_AUDIT_CA")? {
+                Some(ca) => ca.into(),
+                None => self.required("VAULT_TLS_CLIENT_CA")?.into(),
+            },
+        }))
     }
 
     fn bool(&self, name: &str, default: bool) -> Result<bool, ConfigError> {
@@ -273,6 +313,36 @@ mod tests {
                 other => panic!("{name}={value}: expected Invalid, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn the_audit_service_is_optional_and_needs_a_client_certificate() {
+        assert!(load(&base()).unwrap().audit.is_none());
+
+        let mut vars = base();
+        vars.insert("VAULT_AUDIT_ADDR", "audit.internal:50056".to_owned());
+        assert!(matches!(load(&vars), Err(ConfigError::Missing(n)) if n == "VAULT_AUDIT_TLS_CERT"));
+        vars.insert("VAULT_AUDIT_TLS_CERT", "/tls/vault-client.pem".to_owned());
+        vars.insert(
+            "VAULT_AUDIT_TLS_KEY",
+            "/tls/vault-client-key.pem".to_owned(),
+        );
+        let audit = load(&vars).unwrap().audit.unwrap();
+        assert_eq!(audit.server_name, "audit.internal");
+        assert_eq!(audit.ca, std::path::PathBuf::from("/tls/ca.pem"));
+
+        vars.insert("VAULT_AUDIT_SERVER_NAME", "audit".to_owned());
+        vars.insert("VAULT_AUDIT_CA", "/tls/audit-ca.pem".to_owned());
+        let audit = load(&vars).unwrap().audit.unwrap();
+        assert_eq!(
+            (audit.server_name.as_str(), audit.ca.to_str()),
+            ("audit", Some("/tls/audit-ca.pem"))
+        );
+
+        vars.insert("VAULT_AUDIT_ADDR", "audit.internal".to_owned());
+        assert!(
+            matches!(load(&vars), Err(ConfigError::Invalid { name, .. }) if name == "VAULT_AUDIT_ADDR")
+        );
     }
 
     #[test]

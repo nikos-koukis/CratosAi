@@ -15,6 +15,7 @@ import {
 import { cookies } from 'next/headers'
 import { z } from 'zod'
 
+import { auditAccount, auditJoined, auditWorkspaceCreated, Outcome } from '../audit'
 import { config } from '../config'
 import { withTx } from '../db/db'
 import { isUuid, normalizeRecoveryCode, randomToken, recoveryCode, sha256, uuidv7 } from '../ids'
@@ -161,7 +162,7 @@ export async function finishSignUp(
   const info = await verifyRegistration(response, challenge.challenge)
   const userId = uuidv7()
   const codes = Array.from({ length: RECOVERY_CODES }, recoveryCode)
-  const workspaceId = await withTx(db(), async (tx) => {
+  const joined = await withTx(db(), async (tx) => {
     await createUser(tx, {
       userId,
       displayName: pending.displayName,
@@ -178,15 +179,17 @@ export async function finishSignUp(
       name: 'Passkey',
     })
     await replaceRecoveryCodes(tx, userId, codes.map(sha256))
-    if (pending.inviteToken) {
-      return (await acceptInvitation(tx, sha256(pending.inviteToken), userId)).workspaceId
-    }
+    if (pending.inviteToken) return acceptInvitation(tx, sha256(pending.inviteToken), userId)
     const id = uuidv7()
     await createWorkspace(tx, { workspaceId: id, name: pending.workspaceName!, ownerId: userId })
     return id
   })
+  const workspaceId = typeof joined === 'string' ? joined : joined.workspaceId
   await startSession(userId, false)
   log.info({ userId, workspaceId, invited: Boolean(pending.inviteToken) }, 'account created')
+  await auditAccount(userId, { action: 'account.signed_up' })
+  if (typeof joined === 'string') auditWorkspaceCreated(userId, workspaceId, pending.workspaceName!)
+  else auditJoined(userId, joined)
   return { workspaceId, recoveryCodes: codes }
 }
 
@@ -204,13 +207,17 @@ export async function finishSignIn(response: AuthenticationResponseJSON): Promis
   const failed = new Problem('unauthenticated', 'This passkey could not sign you in. Is it for this site?')
   if (!passkey) throw failed
   const user = await getUser(db(), passkey.userId)
+  if (!user) throw failed
+  const refused = async (reason: string) => {
+    await auditAccount(passkey.userId, { action: 'account.sign_in_failed', outcome: Outcome.DENIED, reason })
+    return failed
+  }
   // The authenticator names the account it signed for; it must be the passkey's.
   if (
-    !user ||
-    (response.response.userHandle &&
-      response.response.userHandle !== user.webauthnUserId.toString('base64url'))
+    response.response.userHandle &&
+    response.response.userHandle !== user.webauthnUserId.toString('base64url')
   ) {
-    throw failed
+    throw await refused('wrong_account')
   }
   const cfg = config()
   let verified
@@ -230,12 +237,13 @@ export async function finishSignIn(response: AuthenticationResponseJSON): Promis
     })
   } catch (error) {
     log.warn({ userId: passkey.userId, err: (error as Error).message }, 'passkey sign-in did not verify')
-    throw failed
+    throw await refused('passkey_not_verified')
   }
-  if (!verified.verified) throw failed
+  if (!verified.verified) throw await refused('passkey_not_verified')
   await recordPasskeyUse(db(), passkey.credentialId, verified.authenticationInfo.newCounter)
   await startSession(passkey.userId, false)
   log.info({ userId: passkey.userId }, 'signed in')
+  await auditAccount(passkey.userId, { action: 'account.signed_in' })
 }
 
 /** Starts adding a passkey to the signed-in user (also after a recovery sign-in). */
@@ -267,6 +275,10 @@ export async function finishAddPasskey(session: Session, response: RegistrationR
   })
   if (session.recovered) await clearRecovered(db(), session.sessionId)
   log.info({ userId: session.userId }, 'passkey added')
+  await auditAccount(session.userId, {
+    action: 'account.passkey_added',
+    details: { name: passkeyNameSchema.parse(name), synced: String(info.credentialBackedUp) },
+  })
 }
 
 /**
@@ -280,6 +292,7 @@ export async function signInWithRecoveryCode(input: string): Promise<void> {
   if (!userId) throw new Problem('unauthenticated', 'That recovery code is not valid, or was already used.')
   await startSession(userId, true)
   log.info({ userId }, 'signed in with a recovery code')
+  await auditAccount(userId, { action: 'account.recovery_code_used' })
 }
 
 /** New recovery codes for the user; the old ones stop working. */
@@ -287,6 +300,7 @@ export async function regenerateRecoveryCodes(session: Session): Promise<string[
   const codes = Array.from({ length: RECOVERY_CODES }, recoveryCode)
   await withTx(db(), (tx) => replaceRecoveryCodes(tx, session.userId, codes.map(sha256)))
   log.info({ userId: session.userId }, 'recovery codes replaced')
+  await auditAccount(session.userId, { action: 'account.recovery_codes_replaced' })
   return codes
 }
 

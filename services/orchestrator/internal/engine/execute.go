@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	devicev1 "jarvis.internal/gen/go/jarvis/device/v1"
 	knowledgev1 "jarvis.internal/gen/go/jarvis/knowledge/v1"
 	mcpv1 "jarvis.internal/gen/go/jarvis/mcp/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/orchestrator/internal/store"
 )
 
@@ -270,7 +272,19 @@ func (e *Engine) runDevice(ctx context.Context, c caller, raw json.RawMessage) (
 			approval: &pendingApproval{device: *device, command: command, required: req}}
 	}
 	out, isErr := commandOutput(resp.GetResult())
+	e.auditCommand(ctx, c.tenant, c.user, device.Name, in.Program, isErr, false)
 	return out, isErr, nil
+}
+
+// auditCommand records a command that ran on a user's computer: where and
+// which program, not its arguments or output.
+func (e *Engine) auditCommand(ctx context.Context, tenant, user, device, program string, failed, approved bool) {
+	outcome := auditlog.Success
+	if failed {
+		outcome = auditlog.Failure
+	}
+	e.audit(ctx, tenant, user, auditlog.Device(device), "command.ran", "device", device, outcome, "",
+		map[string]string{"program": truncate(program, 256), "approved": strconv.FormatBool(approved)})
 }
 
 func (e *Engine) execDevice(ctx context.Context, c caller, dev store.Device, command *devicev1.ExecuteCommandRequest,

@@ -233,15 +233,14 @@ func (s *Store) Session(ctx context.Context, id uuid.UUID) (Session, error) {
 
 // SignOut ends the session of a refresh token (current or previous);
 // unknown tokens are ignored.
-func (s *Store) SignOut(ctx context.Context, presented []byte) (uuid.NullUUID, error) {
-	var id uuid.NullUUID
-	err := s.pool.QueryRow(ctx, `UPDATE sessions SET revoked_at = now(), revoke_reason = $2
-		WHERE (refresh_hash = $1 OR previous_hash = $1) AND revoked_at IS NULL RETURNING id`,
-		presented, ReasonSignedOut).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.NullUUID{}, nil
+func (s *Store) SignOut(ctx context.Context, presented []byte) (Session, bool, error) {
+	session, err := scanSession(s.pool.QueryRow(ctx, `UPDATE sessions SET revoked_at = now(), revoke_reason = $2
+		WHERE (refresh_hash = $1 OR previous_hash = $1) AND revoked_at IS NULL RETURNING `+sessionColumns,
+		presented, ReasonSignedOut))
+	if errors.Is(err, ErrNotFound) {
+		return Session{}, false, nil
 	}
-	return id, err
+	return session, err == nil, err
 }
 
 // Sessions lists a user's active sessions, most recently used first.

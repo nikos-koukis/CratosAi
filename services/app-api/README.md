@@ -96,6 +96,7 @@ The phone tells which environment its token is for.
 | `APP_ACCESS_TOKEN_TTL`, `APP_REFRESH_IDLE_TTL`, `APP_PAIRING_CODE_TTL` | `15m`, `720h`, `10m` | |
 | `APP_VOICE_URL` | required | The voice gateway, e.g. `wss://voice.example.com/v1/voice` |
 | `APP_ORCHESTRATOR_ADDR`, `APP_CLIENT_CERT/KEY/CA` | required | The orchestrator and this service's identity towards it |
+| `APP_AUDIT_ADDR`, `APP_AUDIT_SERVER_NAME` | empty: log only | The [audit service](../audit/), with the same identity. Records `device.paired`, `device.token_reused`, `device.signed_out`, `task.cancelled` and `command.approval_submitted`, with the phone as the actor for its user. Recording never delays a request. |
 | `APP_APNS_KEY_FILE`, `APP_APNS_KEY_ID`, `APP_APNS_TEAM_ID`, `APP_APNS_TOPIC` | empty: no push | Your APNs auth key (`AuthKey_<KEY ID>.p8`), its id, your team id and the app's bundle id; all four or none |
 
 ## Development

@@ -12,7 +12,7 @@ orchestrator ─────────▶    │
 
 | Caller | May call |
 |---|---|
-| dashboard (`spiffe://jarvis.local/dashboard-api`) | `ListCatalog`, `CreateIntegration`, `CompleteAuthorization`, `ReauthorizeIntegration`, `ListIntegrations`, `DeleteIntegration` |
+| dashboard (`spiffe://jarvis.local/dashboard-api`) | `ListCatalog`, `CreateIntegration`, `CompleteAuthorization`, `ReauthorizeIntegration`, `ListIntegrations`, `DeleteIntegration`, `ListTools` (to show them; never `CallTool`) |
 | orchestrator (`spiffe://jarvis.local/orchestrator`) | `ListTools`, `CallTool` |
 
 ## Connecting a server
@@ -86,7 +86,8 @@ go run ./cmd/mcpctl integrations -tenant $T -user me
 go run ./cmd/mcpctl delete -tenant $T -user me -integration <id>
 ```
 
-- **Browser step:** `connect` prints the authorization URL, opens it with `-open`, and waits for the redirect on `http://127.0.0.1:8765/callback`. That address is the development `MCP_OAUTH_REDIRECT_URI`.
+- **Browser step:** `connect` prints the authorization URL, opens it with `-open`, and waits for the redirect on `http://127.0.0.1:8765/callback`. That address is the development `MCP_OAUTH_REDIRECT_URI` of `scripts/dev-run.sh`.
+- **With the dashboard:** `tools/dev-stack.sh up` points `MCP_OAUTH_REDIRECT_URI` at the dashboard (`http://localhost:3000/integrations/callback`), runs `mcpctl dev-server`, and allows loopback servers. Connect `http://127.0.0.1:8931/mcp` from the dashboard's Integrations page. `mcpctl connect` then no longer receives the redirect.
 - **Real servers:** use `-slug linear`, `-slug notion`, `-slug atlassian` or `-slug clickup` with your own account, after checking with `mcpctl catalog`.
 - **GitHub:** use `-slug github -token-file <file with a fine-grained PAT>`.
 
@@ -112,6 +113,7 @@ Metrics are at `http://127.0.0.1:9092/metrics` and health at `/healthz`.
 | `MCP_RATE_PER_TENANT_PER_MINUTE`, `MCP_RATE_PER_INTEGRATION_PER_MINUTE` | `120`, `60` | tool call limits |
 | `MCP_TOOLS_CACHE_TTL` | `5m` | tool-list cache |
 | `MCP_DEFAULT_CALL_TIMEOUT`, `MCP_MAX_CALL_TIMEOUT` | `30s`, `120s` | tool call timeouts (max ≤ 10m) |
+| `MCP_AUDIT_ADDR`, `MCP_AUDIT_SERVER_NAME` | none: log only | the [audit service](../audit/), with the router's Vault client identity. Records integration changes and every tool call (`tool.called`: Jarvis for the user, the tool, its duration and outcome; never its arguments or result). Recording never delays a call. |
 | `MCP_LOG_FORMAT`, `MCP_LOG_LEVEL` | `json`, `info` | logging |
 
 ## Known limitations

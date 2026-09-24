@@ -6,6 +6,7 @@ import { migrate, withTx } from '@/server/db/db'
 import { sha256, uuidv7 } from '@/server/ids'
 import { Problem } from '@/server/problem'
 import * as accounts from '@/server/store/accounts'
+import * as integrations from '@/server/store/integrations'
 import * as ws from '@/server/store/workspaces'
 
 import { startPostgres, stopPostgres, type TestDatabase } from './support/postgres'
@@ -269,7 +270,7 @@ describe('invitations', () => {
     const bob = await user('Bob')
     const carol = await user('Carol')
     const acme = await workspace(ana)
-    const { token } = await invite(acme, ana)
+    const { token, invitationId } = await invite(acme, ana)
 
     expect(await ws.findInvitation(db.pool, sha256(token))).toMatchObject({
       state: 'pending',
@@ -281,6 +282,7 @@ describe('invitations', () => {
     expect(await withTx(db.pool, (tx) => ws.acceptInvitation(tx, sha256(token), bob))).toEqual({
       workspaceId: acme,
       role: 'member',
+      invitationId,
     })
     expect((await ws.getMembership(db.pool, acme, bob))?.role).toBe('member')
     expect((await ws.findInvitation(db.pool, sha256(token)))?.state).toBe('used')
@@ -321,5 +323,25 @@ describe('invitations', () => {
     // Another workspace cannot withdraw it.
     const other = await workspace(bob)
     expect((await problemOf(ws.revokeInvitation(db.pool, other, own.invitationId))).code).toBe('not_found')
+  })
+})
+
+describe('MCP authorizations', () => {
+  it('can be finished once, only by the user who started them, before they expire', async () => {
+    const ana = await user()
+    const bob = await user('Bob')
+    const acme = await workspace(ana)
+    const started = { userId: ana, workspaceId: acme, integrationId: uuidv7(), ttlMs: 60_000 }
+    await integrations.saveAuthorization(db.pool, { ...started, stateHash: sha256('state-1') })
+
+    expect(await integrations.takeAuthorization(db.pool, sha256('state-1'), bob)).toBeUndefined()
+    expect(await integrations.takeAuthorization(db.pool, sha256('state-1'), ana)).toEqual({
+      workspaceId: acme,
+      integrationId: started.integrationId,
+    })
+    expect(await integrations.takeAuthorization(db.pool, sha256('state-1'), ana)).toBeUndefined()
+
+    await integrations.saveAuthorization(db.pool, { ...started, stateHash: sha256('old'), ttlMs: -1 })
+    expect(await integrations.takeAuthorization(db.pool, sha256('old'), ana)).toBeUndefined()
   })
 })

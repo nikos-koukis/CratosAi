@@ -14,7 +14,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	auditv1 "jarvis.internal/gen/go/jarvis/audit/v1"
 	mcpv1 "jarvis.internal/gen/go/jarvis/mcp/v1"
+	"jarvis.internal/libs/go/auditlog"
 	"jarvis.internal/mcp-router/internal/catalog"
 	"jarvis.internal/mcp-router/internal/limits"
 	"jarvis.internal/mcp-router/internal/metrics"
@@ -46,6 +48,28 @@ type Deps struct {
 	Guard   netguard.Guard
 	Metrics *metrics.Metrics
 	Log     *slog.Logger
+	// Audit records connections and tool calls (nil: nothing is recorded).
+	Audit *auditlog.Recorder
+}
+
+// auditIntegration records a change to an integration, done by its user.
+func (s *Service) auditIntegration(ctx context.Context, i store.Integration, action string,
+	outcome auditv1.Outcome, reason string) {
+	server := i.CatalogSlug
+	if server == "" {
+		server = hostOf(i.ServerURL)
+	}
+	s.Audit.Record(auditlog.Event{TenantID: i.TenantID.String(), Actor: auditlog.User(i.UserID), Action: action,
+		TargetType: "integration", TargetID: i.ID.String(), Outcome: outcome, Reason: reason,
+		RequestID: RequestID(ctx), Details: map[string]string{"name": i.DisplayName, "server": server,
+			"auth": string(i.Auth)}})
+}
+
+func hostOf(raw string) string {
+	if u, err := url.Parse(raw); err == nil {
+		return u.Host
+	}
+	return ""
 }
 
 // Service implements McpRouterServiceServer.
@@ -156,6 +180,7 @@ func (s *Service) CreateIntegration(ctx context.Context, req *mcpv1.CreateIntegr
 	s.Log.Info("integration created", "request_id", RequestID(ctx), "integration_id", created.ID,
 		"tenant_id", created.TenantID, "catalog_slug", created.CatalogSlug, "auth", created.Auth)
 	if created.Auth == store.AuthBearer {
+		s.auditIntegration(ctx, created, "integration.connected", auditlog.Success, "")
 		return &mcpv1.CreateIntegrationResponse{Integration: toProto(created)}, nil
 	}
 
@@ -170,6 +195,7 @@ func (s *Service) CreateIntegration(ctx context.Context, req *mcpv1.CreateIntegr
 		return nil, s.beginError(ctx, err)
 	}
 	s.Metrics.Authorizations.WithLabelValues("begin", "ok").Inc()
+	s.auditIntegration(ctx, created, "integration.created", auditlog.Success, "")
 	return &mcpv1.CreateIntegrationResponse{Integration: toProto(created), AuthorizationUrl: authURL}, nil
 }
 
@@ -186,6 +212,13 @@ func (s *Service) CompleteAuthorization(ctx context.Context, req *mcpv1.Complete
 		s.Metrics.Authorizations.WithLabelValues("complete", "failed").Inc()
 		if errors.Is(err, oauthflow.ErrAuthorization) {
 			s.Log.Info("authorization not completed", "request_id", RequestID(ctx), "integration_id", id, "reason", err.Error())
+			if integration, loadErr := s.Store.IntegrationByID(ctx, id); id != uuid.Nil && loadErr == nil {
+				outcome, reason := auditlog.Failure, "authorization_failed"
+				if req.GetError() != "" {
+					outcome, reason = auditlog.Denied, "access_denied_by_user"
+				}
+				s.auditIntegration(ctx, integration, "integration.authorization_failed", outcome, reason)
+			}
 			return nil, reasonError(codes.FailedPrecondition, mcpv1.ErrorReason_ERROR_REASON_AUTHORIZATION_FAILED, sanitize(err.Error()))
 		}
 		return nil, s.dependencyError(ctx, "complete authorization", err)
@@ -197,6 +230,7 @@ func (s *Service) CompleteAuthorization(ctx context.Context, req *mcpv1.Complete
 		return nil, s.internal(ctx, "load integration", err)
 	}
 	s.Log.Info("integration connected", "request_id", RequestID(ctx), "integration_id", id, "tenant_id", integration.TenantID)
+	s.auditIntegration(ctx, integration, "integration.connected", auditlog.Success, "")
 	return &mcpv1.CompleteAuthorizationResponse{Integration: toProto(integration)}, nil
 }
 
@@ -245,11 +279,15 @@ func (s *Service) DeleteIntegration(ctx context.Context, req *mcpv1.DeleteIntegr
 	if err != nil {
 		return nil, err
 	}
+	before, lookupErr := s.Store.IntegrationByID(ctx, id)
 	deleted, err := s.Store.DeleteIntegration(ctx, o.tenant, o.user, id)
 	if err != nil {
 		return nil, s.internal(ctx, "delete integration", err)
 	}
 	if deleted {
+		if lookupErr == nil {
+			s.auditIntegration(ctx, before, "integration.deleted", auditlog.Success, "")
+		}
 		s.forget(ctx, id)
 		s.Log.Info("integration deleted", "request_id", RequestID(ctx), "integration_id", id, "tenant_id", o.tenant)
 	}
@@ -305,6 +343,10 @@ func (s *Service) session(ctx context.Context, integration store.Integration) (*
 		},
 		func() {
 			s.Log.Warn("server rejected the stored authorization", "integration_id", integration.ID)
+			s.Audit.Record(auditlog.Event{TenantID: integration.TenantID.String(), Actor: auditlog.Service("mcp-router"),
+				OnBehalfOf: integration.UserID, Action: "integration.needs_reauthorization", TargetType: "integration",
+				TargetID: integration.ID.String(), Outcome: auditlog.Failure, Reason: "authorization_rejected",
+				RequestID: requestID, Details: map[string]string{"name": integration.DisplayName}})
 			s.Flow.MarkNeedsReauth(context.WithoutCancel(ctx), integration.ID, "the server rejected the stored authorization")
 			s.forget(ctx, integration.ID)
 		})

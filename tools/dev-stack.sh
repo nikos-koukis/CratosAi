@@ -11,7 +11,8 @@
 # provider; both accept only the dev tenant's fake key. FAKE_LLM_DELAY=5 makes
 # each background-task step take 5 s (e.g. so a task ends after you hang up,
 # which sends a push notification). ECHO_SAVE=1 saves what you say to the echo
-# provider as WAV files in .dev/stack/echo. Logs and pids live in .dev/stack.
+# provider as WAV files in .dev/stack/echo. A fake OAuth + MCP server
+# (mcpctl dev-server) stands in for Jira & co. Logs and pids live in .dev/stack.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -20,7 +21,7 @@ BIN=$STATE/bin
 DEV_TENANT=${DEV_TENANT:-0199e2e0-0000-7000-8000-000000000001}
 DEV_USER=${DEV_USER:-me}
 DEV_KEY=sk-dev-fake-0001
-PORTS="vault:50051 mcp-router:50052 knowledge:50053 fake-llm:9910 agent:9095 orchestrator:50054 echo-provider:9900 voice-gateway:8080 app-api:8081 dashboard:3000"
+PORTS="vault:50051 audit:50056 mcp-router:50052 mcp-dev-server:8931 knowledge:50053 fake-llm:9910 agent:9095 orchestrator:50054 echo-provider:9900 voice-gateway:8080 app-api:8081 dashboard:3000"
 
 start() { # start NAME DIR COMMAND...
   local name=$1 dir=$2
@@ -53,14 +54,22 @@ up() {
   (cd "$ROOT" && pnpm nx run infra:up >/dev/null)
   echo "Building…"
   (cd "$ROOT" && cargo build --quiet -p jarvis-vault)
-  for service in mcp-router orchestrator voice-gateway app-api; do
+  for service in audit mcp-router orchestrator voice-gateway app-api; do
     (cd "$ROOT/services/$service" && go build -o "$BIN/" ./cmd/...)
   done
   echo "Starting…"
   start vault "$ROOT/services/vault" scripts/dev-run.sh
   wait_port vault 50051 120
-  start mcp-router "$ROOT/services/mcp-router" env MCP_ROUTER_BIN="$BIN/mcp-router" scripts/dev-run.sh
+  # The audit trail: every service records there (and holds events until it is up).
+  start audit "$ROOT/services/audit" env AUDIT_BIN="$BIN/audit" scripts/dev-run.sh
+  wait_port audit 50056
+  # OAuth redirects come back to the dashboard; LOCAL_MCP lets the router
+  # reach the fake MCP server on this machine.
+  start mcp-router "$ROOT/services/mcp-router" env MCP_ROUTER_BIN="$BIN/mcp-router" LOCAL_MCP=1 \
+    MCP_OAUTH_REDIRECT_URI="${DASHBOARD_ORIGIN:-http://localhost:3000}/integrations/callback" scripts/dev-run.sh
   wait_port mcp-router 50052
+  start mcp-dev-server "$ROOT/services/mcp-router" "$BIN/mcpctl" dev-server
+  wait_port mcp-dev-server 8931
   start knowledge "$ROOT/services/knowledge" scripts/dev-run.sh
   wait_port knowledge 50053 600 # downloads the embedding model on first run
   start fake-llm "$ROOT/services/agent" uv run --frozen --package jarvis-agent jarvis-fake-llm --key "$DEV_KEY" \
@@ -91,6 +100,8 @@ up() {
 Jarvis is running. Dev tenant $DEV_TENANT, user $DEV_USER.
 
   Dashboard:     ${DASHBOARD_ORIGIN:-http://localhost:3000} (create an account with a passkey)
+  Audit trail:   the dashboard's Audit trail page (owners see everything, members their own)
+  Test MCP:      http://127.0.0.1:8931/mcp (Integrations → Another MCP server; signs in by itself)
   Pair the app:  (cd services/app-api && go run ./cmd/appctl pair -tenant $DEV_TENANT -user $DEV_USER)
   Talk in text:  (cd services/orchestrator && go run ./cmd/orchctl converse -tenant $DEV_TENANT -user $DEV_USER)
   Stop:          tools/dev-stack.sh down
