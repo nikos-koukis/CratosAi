@@ -1,0 +1,55 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "mcp-router",
+  "projectType": "application",
+  "sourceRoot": "services/mcp-router",
+  "tags": ["type:service", "lang:go"],
+  "implicitDependencies": ["proto", "go-libs"],
+  "namedInputs": {
+    "go": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/.dev/**/*",
+      "{workspaceRoot}/gen/go/**/*",
+      "{workspaceRoot}/libs/go/**/*",
+      "{workspaceRoot}/go.work",
+      "{workspaceRoot}/tools/go/go.mod"
+    ]
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": { "command": "go build ./...", "cwd": "services/mcp-router" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": { "command": "go test -race ./...", "cwd": "services/mcp-router" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": {
+        "command": "go vet ./... && go tool staticcheck ./... && bash -n scripts/*.sh",
+        "cwd": "services/mcp-router"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": {
+        "command": "test -z \"$(gofmt -l .)\" || { gofmt -l .; exit 1; }",
+        "cwd": "services/mcp-router"
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "gofmt -w .", "cwd": "services/mcp-router" }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "scripts/dev-run.sh", "cwd": "services/mcp-router" }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "infra",
+  "projectType": "application",
+  "tags": [
+    "type:infra"
+  ],
+  "targets": {
+    "init": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "deploy/compose/scripts/init-env.sh"
+      },
+      "cache": false
+    },
+    "up": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "init"
+      ],
+      "options": {
+        "command": "docker compose -f deploy/compose/compose.yaml up --detach --wait --wait-timeout 180 && docker compose -f deploy/compose/compose.yaml exec -T postgres /docker-entrypoint-initdb.d/10-service-databases.sh"
+      },
+      "cache": false
+    },
+    "down": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose -f deploy/compose/compose.yaml down"
+      },
+      "cache": false
+    },
+    "reset": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose -f deploy/compose/compose.yaml down --volumes --remove-orphans"
+      },
+      "cache": false
+    },
+    "ps": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose -f deploy/compose/compose.yaml ps"
+      },
+      "cache": false
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose -f deploy/compose/compose.yaml logs --follow --tail 100"
+      },
+      "cache": false
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "up"
+      ],
+      "cache": false,
+      "options": {
+        "command": "deploy/compose/scripts/smoke-test.sh"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{projectRoot}/**/*"
+      ],
+      "options": {
+        "command": "docker compose -f deploy/compose/compose.yaml --env-file deploy/compose/.env.example config --quiet && bash -n deploy/compose/scripts/*.sh deploy/compose/postgres/init/*.sh"
+      }
+    }
+  }
+}

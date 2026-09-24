@@ -1,0 +1,509 @@
+syntax = "proto3";
+
+package jarvis.orchestrator.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "jarvis/common/v1/provider.proto";
+
+// OrchestratorService is Jarvis's execution engine. It gives the realtime
+// voice model its tools (memory, the user's integrations, the user's Mac,
+// background tasks), executes the calls under the user's policies, runs long
+// tasks durably in the background, and turns finished conversations into
+// long-term memory.
+//
+// The voice gateway drives one Conversation per voice session:
+//   1. OpenConversation: the tools and instructions for the realtime model.
+//   2. RecordTurn: every user speech turn (when it ends) and every final
+//      transcript. The gateway's turn counter is what makes confirmations
+//      trustworthy (see the confirmation policy below).
+//   3. CallTool: every function call of the model, with the current turn.
+//   4. WatchConversation: events to speak to the user (a background task
+//      finished, needs a confirmation, needs approval on a device); the
+//      gateway injects each one and acknowledges it with AckEvent.
+//   5. CloseConversation: the session ended; its transcript becomes memory.
+//
+// Confirmation policy: actions that change something outside Jarvis (e.g. a
+// non-read-only integration tool) are not executed when called. The
+// orchestrator answers with a confirmation id; the model asks the user; the
+// action runs when the model calls confirm_action in a LATER user turn than
+// the one in which the question was asked. The gateway reports that turn
+// (AckToolOutput, AckEvent): the turn of the first response created after
+// the question was given to the model, i.e. the response that speaks it.
+// Text inside tool results or documents therefore cannot confirm on the
+// user's behalf. Commands on the user's Mac additionally need a signature
+// from one of the user's approver devices (SubmitDeviceApproval).
+//
+// Security: callers authenticate with mutual TLS; a per-principal policy
+// decides which RPCs each may use (voice gateway: conversation RPCs;
+// dashboard: tasks, devices, approvals). Conversations, tasks and devices
+// belong to one tenant and user; lookups outside them are NOT_FOUND.
+//
+// Errors use canonical gRPC status codes with a google.rpc.ErrorInfo detail
+// (domain "orchestrator.jarvis", reason an ErrorReason value name) where useful.
+service OrchestratorService {
+  // OpenConversation starts a conversation for a voice session.
+  rpc OpenConversation(OpenConversationRequest) returns (OpenConversationResponse);
+
+  // RecordTurn records that a speaker's turn ended, with its transcript when
+  // known. Idempotent per (conversation, role, item_id).
+  rpc RecordTurn(RecordTurnRequest) returns (RecordTurnResponse);
+
+  // CallTool executes one function call of the realtime model. Failures of
+  // the tool are reported in `output` for the model, not as RPC errors.
+  //
+  // Errors:
+  //   NOT_FOUND            ERROR_REASON_CONVERSATION_NOT_FOUND.
+  //   FAILED_PRECONDITION  ERROR_REASON_CONVERSATION_CLOSED.
+  rpc CallTool(CallToolRequest) returns (CallToolResponse);
+
+  // AckToolOutput reports at which user turn the output of a call with
+  // `ack_required` reached the user. The confirmation the call requested is
+  // answerable from the next turn; until then it cannot be confirmed.
+  //
+  // Errors:
+  //   NOT_FOUND            ERROR_REASON_CONVERSATION_NOT_FOUND.
+  rpc AckToolOutput(AckToolOutputRequest) returns (AckToolOutputResponse);
+
+  // WatchConversation streams events to tell the user about, oldest first,
+  // from `after_event_id`. The stream ends when the conversation closes.
+  rpc WatchConversation(WatchConversationRequest) returns (stream WatchConversationResponse);
+
+  // AckEvent confirms that an event was put into the conversation, and at
+  // which user turn. Questions in events are answerable from the next turn.
+  rpc AckEvent(AckEventRequest) returns (AckEventResponse);
+
+  // CloseConversation ends a conversation; its memory is extracted in the
+  // background. Idempotent.
+  rpc CloseConversation(CloseConversationRequest) returns (CloseConversationResponse);
+
+  // GetTask returns a background task.
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+
+  // ListTasks lists a user's recent tasks, newest first.
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+
+  // CancelTask stops a task that has not finished. Idempotent.
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+
+  // RegisterDevice adds (or replaces) a user's computer running the Jarvis
+  // local daemon. The client key is sealed by the Vault before storage.
+  rpc RegisterDevice(RegisterDeviceRequest) returns (RegisterDeviceResponse);
+
+  // ListDevices lists a user's devices.
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+
+  // RemoveDevice forgets a device. Idempotent.
+  rpc RemoveDevice(RemoveDeviceRequest) returns (RemoveDeviceResponse);
+
+  // SubmitDeviceApproval delivers an approver device's signature for a
+  // pending device command; the command then runs.
+  //
+  // Errors:
+  //   NOT_FOUND            ERROR_REASON_APPROVAL_NOT_FOUND.
+  //   PERMISSION_DENIED    ERROR_REASON_APPROVAL_REJECTED (the device refused
+  //                        the signature).
+  rpc SubmitDeviceApproval(SubmitDeviceApprovalRequest) returns (SubmitDeviceApprovalResponse);
+}
+
+// ErrorReason values appear as `google.rpc.ErrorInfo.reason` (by value name).
+enum ErrorReason {
+  // Default value. Never sent.
+  ERROR_REASON_UNSPECIFIED = 0;
+  // No such conversation for this caller.
+  ERROR_REASON_CONVERSATION_NOT_FOUND = 1;
+  // The conversation is closed.
+  ERROR_REASON_CONVERSATION_CLOSED = 2;
+  // No such task for this tenant and user.
+  ERROR_REASON_TASK_NOT_FOUND = 3;
+  // No such device for this tenant and user.
+  ERROR_REASON_DEVICE_NOT_FOUND = 4;
+  // No pending device approval with this id.
+  ERROR_REASON_APPROVAL_NOT_FOUND = 5;
+  // The device rejected the approval signature.
+  ERROR_REASON_APPROVAL_REJECTED = 6;
+  // The tenant has no key for the conversation's provider in the Vault.
+  ERROR_REASON_NO_PROVIDER_KEY = 7;
+}
+
+// OpenConversationRequest is the input to OpenConversation.
+message OpenConversationRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User, 1 to 128 printable ASCII characters.
+  string user_id = 2;
+  // The gateway's session id, for correlation in logs and audit.
+  string session_id = 3;
+  // The realtime provider of the session; background reasoning uses the
+  // same provider (and the tenant's key for it).
+  jarvis.common.v1.Provider provider = 4;
+  // User's locale, e.g. "el-GR"; empty means unknown.
+  string locale = 5;
+}
+
+// OpenConversationResponse is the output of OpenConversation.
+message OpenConversationResponse {
+  // Server-assigned id (UUID).
+  string conversation_id = 1;
+  // Instructions to add to the realtime session: how to use the tools and
+  // the confirmation rules.
+  string instructions = 2;
+  // Function tools for the realtime model.
+  repeated FunctionTool tools = 3;
+}
+
+// FunctionTool is a tool as realtime and responses APIs declare it.
+message FunctionTool {
+  // Name: [a-zA-Z0-9_-]{1,64}.
+  string name = 1;
+  // What it does, for the model.
+  string description = 2;
+  // JSON Schema of the arguments (an object schema), as JSON.
+  string parameters_json = 3;
+}
+
+// Role of a speaker.
+enum Role {
+  // Default value. Never valid.
+  ROLE_UNSPECIFIED = 0;
+  // The user.
+  ROLE_USER = 1;
+  // Jarvis.
+  ROLE_ASSISTANT = 2;
+}
+
+// RecordTurnRequest is the input to RecordTurn.
+message RecordTurnRequest {
+  // Conversation id.
+  string conversation_id = 1;
+  // Who spoke.
+  Role role = 2;
+  // The gateway's count of ended user turns, including this one for a user
+  // turn. Never decreases within a conversation.
+  int64 user_turn = 3;
+  // The provider's item id of the turn; makes the call idempotent.
+  string item_id = 4;
+  // Final transcript; may be empty when the turn ended before transcription.
+  string text = 5;
+}
+
+// RecordTurnResponse is the output of RecordTurn.
+message RecordTurnResponse {}
+
+// CallToolRequest is the input to CallTool.
+message CallToolRequest {
+  // Conversation id.
+  string conversation_id = 1;
+  // The model's call id; makes the call idempotent.
+  string call_id = 2;
+  // Tool name, as returned by OpenConversation.
+  string name = 3;
+  // Arguments as a JSON object.
+  string arguments_json = 4;
+  // The gateway's count of ended user turns when the call was made.
+  int64 user_turn = 5;
+}
+
+// CallToolResponse is the output of CallTool.
+message CallToolResponse {
+  // The result for the model (JSON), including errors it should explain.
+  string output = 1;
+  // The tool failed (details in `output`).
+  bool is_error = 2;
+  // The output asks the user a question (a confirmation). After giving it
+  // to the model, call AckToolOutput with the user turn of the response
+  // that speaks it; the question cannot be answered before that.
+  bool ack_required = 3;
+}
+
+// AckToolOutputRequest is the input to AckToolOutput.
+message AckToolOutputRequest {
+  // Conversation id.
+  string conversation_id = 1;
+  // The call whose output reached the user.
+  string call_id = 2;
+  // The gateway's count of ended user turns when the model started the
+  // response that speaks the output.
+  int64 user_turn = 3;
+}
+
+// AckToolOutputResponse is the output of AckToolOutput.
+message AckToolOutputResponse {}
+
+// WatchConversationRequest is the input to WatchConversation.
+message WatchConversationRequest {
+  // Conversation id.
+  string conversation_id = 1;
+  // Resume after this event id (0: from the first unacknowledged event).
+  int64 after_event_id = 2;
+}
+
+// WatchConversationResponse is one message of the WatchConversation stream.
+message WatchConversationResponse {
+  // The event.
+  ConversationEvent event = 1;
+}
+
+// ConversationEvent is something to tell the user.
+message ConversationEvent {
+  // Increasing id within the conversation.
+  int64 event_id = 1;
+  // What happened.
+  oneof event {
+    // A background task finished (or failed, or was cancelled).
+    TaskFinished task_finished = 2;
+    // A background task needs the user's confirmation to continue.
+    ConfirmationRequested confirmation_requested = 3;
+    // A device command waits for approval on an approver device.
+    DeviceApprovalRequested device_approval_requested = 4;
+  }
+  // The message to put into the conversation for the model, e.g.
+  // "Background task 'book the flight' finished: ...". Data from tools is
+  // clearly marked as such.
+  string message = 5;
+  // When it happened.
+  google.protobuf.Timestamp create_time = 6;
+}
+
+// TaskFinished is the outcome of a background task.
+message TaskFinished {
+  // The task.
+  Task task = 1;
+}
+
+// ConfirmationRequested asks the user to confirm an action.
+message ConfirmationRequested {
+  // Id to pass to confirm_action or cancel_action.
+  string confirmation_id = 1;
+  // The task waiting, if any.
+  string task_id = 2;
+  // What will happen, for the model to put in its own words.
+  string summary = 3;
+}
+
+// DeviceApprovalRequested says a command waits for a signed approval.
+message DeviceApprovalRequested {
+  // The pending approval (the device's approval id).
+  string approval_id = 1;
+  // Device name.
+  string device_name = 2;
+  // The command, for the user's information.
+  string summary = 3;
+}
+
+// AckEventRequest is the input to AckEvent.
+message AckEventRequest {
+  // Conversation id.
+  string conversation_id = 1;
+  // The event put into the conversation.
+  int64 event_id = 2;
+  // The gateway's count of ended user turns when the model started the
+  // response that speaks the event.
+  int64 user_turn = 3;
+}
+
+// AckEventResponse is the output of AckEvent.
+message AckEventResponse {}
+
+// CloseConversationRequest is the input to CloseConversation.
+message CloseConversationRequest {
+  // Conversation id.
+  string conversation_id = 1;
+}
+
+// CloseConversationResponse is the output of CloseConversation.
+message CloseConversationResponse {}
+
+// TaskState is the lifecycle of a background task.
+enum TaskState {
+  // Default value. Never sent.
+  TASK_STATE_UNSPECIFIED = 0;
+  // Waiting for a worker.
+  TASK_STATE_QUEUED = 1;
+  // A worker is on it.
+  TASK_STATE_RUNNING = 2;
+  // Waiting for the user to confirm an action.
+  TASK_STATE_AWAITING_CONFIRMATION = 3;
+  // Waiting for a signed approval of a device command.
+  TASK_STATE_AWAITING_APPROVAL = 4;
+  // Done; `result` has the answer.
+  TASK_STATE_SUCCEEDED = 5;
+  // Could not finish; `result` says why.
+  TASK_STATE_FAILED = 6;
+  // Cancelled by the user.
+  TASK_STATE_CANCELLED = 7;
+}
+
+// Task is a background task.
+message Task {
+  // Id (UUID).
+  string task_id = 1;
+  // Conversation that started it.
+  string conversation_id = 2;
+  // What the user asked for.
+  string goal = 3;
+  // Current state.
+  TaskState state = 4;
+  // The answer (SUCCEEDED) or the reason (FAILED, CANCELLED).
+  string result = 5;
+  // Steps taken (model decisions).
+  int32 steps = 6;
+  // When it was created.
+  google.protobuf.Timestamp create_time = 7;
+  // When it last changed.
+  google.protobuf.Timestamp update_time = 8;
+  // Set while AWAITING_APPROVAL: what one of the user's approver devices
+  // must review and sign (SubmitDeviceApproval).
+  PendingApproval pending_approval = 9;
+}
+
+// PendingApproval is a device command waiting for a signed approval.
+message PendingApproval {
+  // The device's approval id.
+  string approval_id = 1;
+  // Name of the device that will run the command.
+  string device_name = 2;
+  // Serialized jarvis.device.v1.ApprovalPayload exactly as the device sent
+  // it. Approvers display the command from these bytes (never from another
+  // description) and sign exactly them.
+  bytes payload = 3;
+  // After this time the approval can no longer be used.
+  google.protobuf.Timestamp expire_time = 4;
+}
+
+// GetTaskRequest is the input to GetTask.
+message GetTaskRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+  // Task id.
+  string task_id = 3;
+}
+
+// GetTaskResponse is the output of GetTask.
+message GetTaskResponse {
+  // The task.
+  Task task = 1;
+}
+
+// ListTasksRequest is the input to ListTasks.
+message ListTasksRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+  // At most this many, 1 to 100 (default 20).
+  int32 limit = 3;
+}
+
+// ListTasksResponse is the output of ListTasks.
+message ListTasksResponse {
+  // Newest first.
+  repeated Task tasks = 1;
+}
+
+// CancelTaskRequest is the input to CancelTask.
+message CancelTaskRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+  // Task id.
+  string task_id = 3;
+}
+
+// CancelTaskResponse is the output of CancelTask.
+message CancelTaskResponse {
+  // The task after cancellation.
+  Task task = 1;
+}
+
+// Device is a user's computer running the Jarvis local daemon.
+message Device {
+  // Id (UUID).
+  string device_id = 1;
+  // Display name, e.g. "MacBook Pro"; also the tool's description.
+  string name = 2;
+  // gRPC address of the daemon, e.g. "100.101.102.103:7443" (tailnet).
+  string address = 3;
+  // TLS server name of the daemon's certificate.
+  string server_name = 4;
+  // When it was registered.
+  google.protobuf.Timestamp create_time = 5;
+}
+
+// RegisterDeviceRequest is the input to RegisterDevice.
+message RegisterDeviceRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+  // Display name, 1 to 64 characters. A device with the same name is replaced.
+  string name = 3;
+  // gRPC address (host:port).
+  string address = 4;
+  // TLS server name; defaults to the address host.
+  string server_name = 5;
+  // PEM CA certificate the daemon's server certificate chains to.
+  string ca_pem = 6;
+  // PEM client certificate the daemon issued for the orchestrator.
+  string client_cert_pem = 7;
+  // PEM private key of that certificate. Sealed by the Vault before storage.
+  bytes client_key_pem = 8 [debug_redact = true];
+}
+
+// RegisterDeviceResponse is the output of RegisterDevice.
+message RegisterDeviceResponse {
+  // The device.
+  Device device = 1;
+}
+
+// ListDevicesRequest is the input to ListDevices.
+message ListDevicesRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+}
+
+// ListDevicesResponse is the output of ListDevices.
+message ListDevicesResponse {
+  // The user's devices.
+  repeated Device devices = 1;
+}
+
+// RemoveDeviceRequest is the input to RemoveDevice.
+message RemoveDeviceRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+  // Device id.
+  string device_id = 3;
+}
+
+// RemoveDeviceResponse is the output of RemoveDevice.
+message RemoveDeviceResponse {}
+
+// SubmitDeviceApprovalRequest is the input to SubmitDeviceApproval.
+message SubmitDeviceApprovalRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+  // The device's approval id (from DeviceApprovalRequested).
+  string approval_id = 3;
+  // Approver key id, as configured on the device.
+  string approver_id = 4;
+  // Signature over the approval payload (see jarvis.device.v1.Approval).
+  bytes signature = 5;
+}
+
+// SubmitDeviceApprovalResponse is the output of SubmitDeviceApproval.
+message SubmitDeviceApprovalResponse {
+  // The command's outcome as JSON (exit code, output), as told to the model.
+  string output = 1;
+  // How long the command ran.
+  google.protobuf.Duration duration = 2;
+}

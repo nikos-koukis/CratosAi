@@ -1,0 +1,24 @@
+# Development authorization policy: which mTLS client identity (the URI SAN
+# of its certificate) may call which Vault RPC. Anything not listed is denied.
+# Production policies are deployed per environment, not from this file.
+
+# Dashboard backend: manages keys, can never read plaintext.
+[[principal]]
+id = "spiffe://jarvis.local/dashboard-api"
+allow = ["CreateKey", "RevokeKey"]
+
+# Voice gateway: reads plaintext keys to call the LLM provider.
+[[principal]]
+id = "spiffe://jarvis.local/voice-gateway"
+allow = ["GetDecryptedKey"]
+
+# MCP router: seals and opens its own OAuth tokens; cannot read provider keys.
+[[principal]]
+id = "spiffe://jarvis.local/mcp-router"
+allow = ["SealData", "OpenData"]
+
+# Orchestrator: reads provider keys for background reasoning and memory
+# extraction; seals and opens its own secrets (device client keys).
+[[principal]]
+id = "spiffe://jarvis.local/orchestrator"
+allow = ["GetDecryptedKey", "SealData", "OpenData"]

@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Nx
+.nx/cache/
+.nx/workspace-data/
+
+# Rust
+target/
+
+# Generated code other than Go and Python (gen/go and gen/python are
+# committed and kept in sync by `pnpm nx run proto:lint`)
+gen/*
+!gen/go/
+!gen/python/
+
+# Python
+.venv/
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Build artifacts
+dist/
+*.binpb
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.idea/
+
+# Local development state (dev certificates etc.)
+.dev/

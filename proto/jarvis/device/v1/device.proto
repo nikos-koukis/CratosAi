@@ -1,0 +1,228 @@
+syntax = "proto3";
+
+package jarvis.device.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// DeviceService runs on a user's computer (the Mac local daemon) and executes
+// commands for the orchestrator inside an operating-system sandbox.
+//
+// Security contract:
+//   * Reachable only over the user's Tailscale tailnet, with mutual TLS. The
+//     caller's identity is the URI SAN of its client certificate.
+//   * No shell. `program` (an absolute path) is executed directly with `args`
+//     as its argument vector.
+//   * Commands in the device's allowlist run immediately. Any other command
+//     runs only after one of the user's approver devices signs an approval
+//     for exactly that command (see ApprovalRequired). The daemon verifies
+//     the signature itself, so a compromised orchestrator cannot approve on
+//     the user's behalf. Programs on the device's deny list never run.
+//   * Every command runs sandboxed: no network, no writes and no access to
+//     macOS services unless granted (see SandboxGrants); credential stores
+//     such as ~/.ssh, keychains and .env files are never readable.
+//
+// Errors use canonical gRPC status codes. When a caller may need to branch on
+// the cause, the status carries a google.rpc.ErrorInfo detail with domain
+// "device.jarvis" and `reason` set to an ErrorReason value name.
+service DeviceService {
+  // GetCapabilities describes the device and the policy it enforces, so the
+  // orchestrator can plan commands that will run without approval.
+  //
+  // Errors:
+  //   PERMISSION_DENIED  caller may not call this method.
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+
+  // ExecuteCommand runs one command, or answers with ApprovalRequired when
+  // the command needs the user's signed approval first. To proceed, call
+  // again with the same command and `approval` set.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT     a field is missing or malformed.
+  //   PERMISSION_DENIED    ERROR_REASON_COMMAND_DENIED,
+  //                        ERROR_REASON_WORKING_DIRECTORY_NOT_ALLOWED,
+  //                        ERROR_REASON_APPROVAL_INVALID, or the caller may not
+  //                        call this method.
+  //   FAILED_PRECONDITION  ERROR_REASON_APPROVAL_EXPIRED (unknown, used or
+  //                        expired approval id) or ERROR_REASON_NO_APPROVERS.
+  //   RESOURCE_EXHAUSTED   ERROR_REASON_TOO_MANY_COMMANDS or
+  //                        ERROR_REASON_TOO_MANY_PENDING_APPROVALS.
+  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
+}
+
+// ErrorReason values appear as `google.rpc.ErrorInfo.reason` (by value name)
+// on failed calls, with domain "device.jarvis".
+enum ErrorReason {
+  // Default value. Never sent.
+  ERROR_REASON_UNSPECIFIED = 0;
+  // The program is on the device's deny list; no approval can override it.
+  ERROR_REASON_COMMAND_DENIED = 1;
+  // The working directory is outside the workspace roots or inside a
+  // protected path.
+  ERROR_REASON_WORKING_DIRECTORY_NOT_ALLOWED = 2;
+  // The approval's signature, approver or command does not match.
+  ERROR_REASON_APPROVAL_INVALID = 3;
+  // The approval id is unknown, already used or expired. Request a new one.
+  ERROR_REASON_APPROVAL_EXPIRED = 4;
+  // The command needs approval but the device has no approvers configured.
+  ERROR_REASON_NO_APPROVERS = 5;
+  // The device is already running its maximum number of commands.
+  ERROR_REASON_TOO_MANY_COMMANDS = 6;
+  // Too many approvals are waiting for a signature.
+  ERROR_REASON_TOO_MANY_PENDING_APPROVALS = 7;
+}
+
+// SandboxGrants lists what a command may do beyond the default sandbox, which
+// allows reading non-protected files and nothing else.
+message SandboxGrants {
+  // Create, modify and delete files inside the working directory.
+  bool writable = 1;
+  // Open outbound network connections.
+  bool network = 2;
+  // Talk to macOS services (launch apps, AppleScript, clipboard). Commands
+  // with this grant can act outside the sandbox through those services.
+  bool system_services = 3;
+}
+
+// GetCapabilitiesRequest is the input to DeviceService.GetCapabilities.
+message GetCapabilitiesRequest {}
+
+// GetCapabilitiesResponse is the output of DeviceService.GetCapabilities.
+message GetCapabilitiesResponse {
+  // Human-readable device name, as shown to approvers.
+  string device_name = 1;
+  // Daemon version.
+  string daemon_version = 2;
+  // Directories commands may use as their working directory.
+  repeated string workspace_roots = 3;
+  // Commands that run without approval (unless the entry says otherwise).
+  repeated AllowedCommand allowed_commands = 4;
+  // Programs that never run, even with approval.
+  repeated string denied_programs = 5;
+  // Execution limits.
+  CommandLimits limits = 6;
+  // Whether commands outside the allowlist can be approved at all.
+  bool approvals_enabled = 7;
+}
+
+// AllowedCommand is one allowlist entry.
+message AllowedCommand {
+  // Absolute path of the executable.
+  string program = 1;
+  // Arguments the command must start with, in order.
+  repeated string args_prefix = 2;
+  // Whether further arguments may follow `args_prefix`.
+  bool allow_extra_args = 3;
+  // Sandbox grants the command runs with.
+  SandboxGrants sandbox = 4;
+  // Whether this entry still needs a signed approval for every run.
+  bool requires_approval = 5;
+  // What the command is for, for planners and humans.
+  string description = 6;
+}
+
+// CommandLimits bounds every command.
+message CommandLimits {
+  // Timeout applied when a request sets none.
+  google.protobuf.Duration default_timeout = 1;
+  // Largest timeout a request may ask for.
+  google.protobuf.Duration max_timeout = 2;
+  // Bytes of stdout and of stderr kept per command; the rest is dropped.
+  uint64 max_output_bytes = 3;
+  // Commands that may run at the same time.
+  uint32 max_concurrent_commands = 4;
+}
+
+// ExecuteCommandRequest is the input to DeviceService.ExecuteCommand.
+message ExecuteCommandRequest {
+  // Absolute path of the executable to run. Required.
+  string program = 1;
+  // Arguments, passed verbatim (no shell expansion).
+  repeated string args = 2;
+  // Absolute working directory inside a workspace root. Defaults to the
+  // first workspace root.
+  string working_directory = 3;
+  // Timeout; defaults to the device's default and is capped by its maximum.
+  google.protobuf.Duration timeout = 4;
+  // Sandbox grants requested. Unset means the allowlist entry's grants (or
+  // none). Grants beyond the matching allowlist entry, like any command
+  // outside the allowlist, need approval; the approver sees them.
+  SandboxGrants sandbox = 5;
+  // Set when retrying a command after ApprovalRequired.
+  Approval approval = 6;
+}
+
+// Approval is an approver device's signature over an ApprovalPayload.
+message Approval {
+  // `approval_id` from ApprovalRequired.
+  string approval_id = 1;
+  // Id of the approver key that signed, as configured on the device.
+  string approver_id = 2;
+  // ECDSA P-256 / SHA-256 signature, raw 64-byte r||s encoding, over the
+  // bytes "jarvis.device.v1.ApprovalPayload" || 0x00 || payload.
+  bytes signature = 3;
+}
+
+// ExecuteCommandResponse is the output of DeviceService.ExecuteCommand.
+message ExecuteCommandResponse {
+  // Either the command ran, or it needs approval first.
+  oneof outcome {
+    // The command ran (it may still have failed or timed out).
+    CommandResult result = 1;
+    // The command needs a signed approval; nothing was run.
+    ApprovalRequired approval_required = 2;
+  }
+}
+
+// CommandResult is the outcome of a command that was started.
+message CommandResult {
+  // Exit status, or -1 if the process was killed by a signal.
+  int32 exit_code = 1;
+  // Signal that terminated the process, or 0.
+  int32 signal = 2;
+  // Captured standard output, at most CommandLimits.max_output_bytes.
+  bytes stdout = 3;
+  // Captured standard error, at most CommandLimits.max_output_bytes.
+  bytes stderr = 4;
+  // Whether stdout exceeded the limit and was cut.
+  bool stdout_truncated = 5;
+  // Whether stderr exceeded the limit and was cut.
+  bool stderr_truncated = 6;
+  // Whether the command hit its timeout and was killed.
+  bool timed_out = 7;
+  // Wall-clock run time.
+  google.protobuf.Duration duration = 8;
+}
+
+// ApprovalRequired means the user must approve the command first.
+message ApprovalRequired {
+  // Identifies this approval; single use.
+  string approval_id = 1;
+  // Serialized ApprovalPayload. Approvers must display the command from
+  // these bytes (never from another description) and sign exactly them.
+  bytes payload = 2;
+  // After this time the approval can no longer be used.
+  google.protobuf.Timestamp expire_time = 3;
+}
+
+// ApprovalPayload is what an approver reviews and signs.
+message ApprovalPayload {
+  // Same as ApprovalRequired.approval_id.
+  string approval_id = 1;
+  // Device that will run the command.
+  string device_name = 2;
+  // Absolute path of the executable.
+  string program = 3;
+  // Exact arguments.
+  repeated string args = 4;
+  // Absolute working directory.
+  string working_directory = 5;
+  // Timeout the command will run with.
+  google.protobuf.Duration timeout = 6;
+  // Sandbox grants the command will run with.
+  SandboxGrants sandbox = 7;
+  // When the device issued the approval request.
+  google.protobuf.Timestamp issue_time = 8;
+  // When the approval expires.
+  google.protobuf.Timestamp expire_time = 9;
+}

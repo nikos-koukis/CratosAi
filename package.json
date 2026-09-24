@@ -1,0 +1,27 @@
+{
+  "name": "jarvis",
+  "private": true,
+  "description": "Project Jarvis monorepo. Node tooling here only drives Nx; each language keeps its own native build.",
+  "packageManager": "pnpm@10.13.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "nx run-many -t lint format-check build",
+    "test": "nx run-many -t test --exclude infra",
+    "format": "nx run-many -t format",
+    "infra:up": "nx run infra:up",
+    "infra:down": "nx run infra:down",
+    "infra:test": "nx run infra:test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@bufbuild/buf",
+      "nx"
+    ]
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "1.73.0",
+    "nx": "23.2.1"
+  }
+}

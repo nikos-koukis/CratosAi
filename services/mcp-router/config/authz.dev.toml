@@ -1,0 +1,20 @@
+# Development authorization policy: which mTLS client identity (the URI SAN
+# of its certificate) may call which router RPC. Anything not listed is denied.
+# Production policies are deployed per environment, not from this file.
+
+# Dashboard backend: manages a user's integrations; cannot call tools.
+[[principal]]
+id = "spiffe://jarvis.local/dashboard-api"
+allow = [
+  "ListCatalog",
+  "CreateIntegration",
+  "CompleteAuthorization",
+  "ReauthorizeIntegration",
+  "ListIntegrations",
+  "DeleteIntegration",
+]
+
+# Orchestrator: lists and calls tools; cannot connect or delete integrations.
+[[principal]]
+id = "spiffe://jarvis.local/orchestrator"
+allow = ["ListTools", "CallTool"]

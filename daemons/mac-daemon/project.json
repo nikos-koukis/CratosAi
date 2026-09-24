@@ -1,0 +1,57 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "mac-daemon",
+  "projectType": "application",
+  "sourceRoot": "daemons/mac-daemon/src",
+  "tags": ["type:daemon", "lang:rust"],
+  "implicitDependencies": ["proto"],
+  "namedInputs": {
+    "rust": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/.dev/**/*",
+      "{workspaceRoot}/libs/rust/**/*",
+      "{workspaceRoot}/Cargo.toml",
+      "{workspaceRoot}/Cargo.lock",
+      "{workspaceRoot}/rust-toolchain.toml",
+      "{workspaceRoot}/proto/**/*.proto"
+    ]
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": ["rust"],
+      "options": { "command": "cargo build -p jarvis-daemon --locked" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": ["rust"],
+      "options": { "command": "cargo test -p jarvis-daemon -p jarvis-common --locked" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["rust"],
+      "options": {
+        "command": "cargo clippy -p jarvis-daemon -p jarvis-common --all-targets --locked -- -D warnings && bash -n daemons/mac-daemon/scripts/*.sh"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "inputs": ["rust"],
+      "options": { "command": "cargo fmt -p jarvis-daemon -p jarvis-common --check" }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "cargo fmt -p jarvis-daemon -p jarvis-common" }
+    },
+    "setup": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "daemons/mac-daemon/scripts/dev-setup.sh" }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "daemons/mac-daemon/scripts/dev-run.sh" }
+    }
+  }
+}

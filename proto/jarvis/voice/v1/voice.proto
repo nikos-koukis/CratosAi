@@ -1,0 +1,192 @@
+syntax = "proto3";
+
+package jarvis.voice.v1;
+
+import "jarvis/common/v1/provider.proto";
+
+// The voice gateway's WebSocket protocol between client apps (iOS, macOS)
+// and the gateway. It is not a gRPC service: each binary WebSocket frame
+// carries exactly one serialized ClientMessage or ServerMessage.
+//
+// Connection:
+//   GET wss://<gateway>/v1/voice
+//   Authorization: Bearer <access token>
+//   Sec-WebSocket-Protocol: jarvis.voice.v1
+//
+// Audio in both directions is raw PCM: 16-bit signed little-endian, mono,
+// 24 kHz, in frames of 10 to 100 ms (20 ms recommended).
+//
+// Flow:
+//   1. The client sends StartSession; the gateway answers SessionReady, or an
+//      Error followed by close.
+//   2. The client streams InputAudio continuously. The provider detects when
+//      the user starts and stops speaking and answers on its own.
+//   3. The gateway streams OutputAudio and Transcript messages.
+//   4. SpeechStarted while the assistant is talking means the user interrupted:
+//      the client must stop playback immediately and discard buffered audio.
+//      The gateway has already dropped the rest of that response.
+//   5. Either side ends with EndSession or by closing the socket.
+
+// ClientMessage is everything a client may send.
+message ClientMessage {
+  // The message.
+  oneof message {
+    // Must be the first message on the socket.
+    StartSession start_session = 1;
+    // A frame of microphone audio.
+    InputAudio input_audio = 2;
+    // Stop the response in progress (e.g. the user tapped stop).
+    CancelResponse cancel_response = 3;
+    // Close the session cleanly.
+    EndSession end_session = 4;
+  }
+}
+
+// StartSession opens a conversation with a provider, using the tenant's own
+// key from the vault.
+message StartSession {
+  // LLM provider; UNSPECIFIED uses the gateway's default.
+  jarvis.common.v1.Provider provider = 1;
+  // Provider voice name; empty uses the gateway's default for that provider.
+  string voice = 2;
+  // The user's locale as a BCP 47 tag (e.g. "el-GR"), for dates, formats
+  // and the language of background work; empty means unknown.
+  string locale = 3;
+}
+
+// InputAudio is one frame of microphone audio.
+message InputAudio {
+  // PCM16 LE mono 24 kHz. Even length, at most 100 ms (4800 bytes).
+  bytes pcm16 = 1;
+}
+
+// CancelResponse stops the assistant's current response.
+message CancelResponse {}
+
+// EndSession closes the session cleanly.
+message EndSession {}
+
+// ServerMessage is everything the gateway may send.
+message ServerMessage {
+  // The message.
+  oneof message {
+    // The session is open; start streaming audio.
+    SessionReady session_ready = 1;
+    // A chunk of assistant speech.
+    OutputAudio output_audio = 2;
+    // Text of what the user or the assistant said.
+    Transcript transcript = 3;
+    // The user started speaking; stop playback now (barge-in).
+    SpeechStarted speech_started = 4;
+    // The user stopped speaking.
+    SpeechStopped speech_stopped = 5;
+    // The assistant finished (or abandoned) a response.
+    ResponseDone response_done = 6;
+    // Something went wrong; if `fatal`, the socket closes next.
+    Error error = 7;
+  }
+}
+
+// SessionReady confirms the session.
+message SessionReady {
+  // Gateway session id, for support and log correlation.
+  string session_id = 1;
+  // Provider actually in use.
+  jarvis.common.v1.Provider provider = 2;
+  // Voice actually in use.
+  string voice = 3;
+  // Audio sample rate in Hz (always 24000 in this version).
+  uint32 sample_rate_hz = 4;
+}
+
+// OutputAudio is a chunk of assistant speech.
+message OutputAudio {
+  // PCM16 LE mono 24 kHz.
+  bytes pcm16 = 1;
+  // Response this audio belongs to.
+  string response_id = 2;
+}
+
+// Role says who a transcript belongs to.
+enum Role {
+  // Default value. Never sent.
+  ROLE_UNSPECIFIED = 0;
+  // The human speaking into the microphone.
+  ROLE_USER = 1;
+  // The assistant.
+  ROLE_ASSISTANT = 2;
+}
+
+// Transcript carries text for display, streamed as deltas.
+message Transcript {
+  // Who said it.
+  Role role = 1;
+  // Text to append (when `final` is false) or the complete text (when true).
+  string text = 2;
+  // Whether `text` is the complete utterance.
+  bool final = 3;
+  // Conversation item the text belongs to.
+  string item_id = 4;
+}
+
+// SpeechStarted means the user began speaking.
+message SpeechStarted {}
+
+// SpeechStopped means the user stopped speaking.
+message SpeechStopped {}
+
+// ResponseStatus is how a response ended.
+enum ResponseStatus {
+  // Default value. Never sent.
+  RESPONSE_STATUS_UNSPECIFIED = 0;
+  // The assistant finished speaking.
+  RESPONSE_STATUS_COMPLETED = 1;
+  // Cut short by the user (barge-in or CancelResponse).
+  RESPONSE_STATUS_CANCELLED = 2;
+  // The provider failed to produce it.
+  RESPONSE_STATUS_FAILED = 3;
+}
+
+// ResponseDone ends one assistant response.
+message ResponseDone {
+  // Response id.
+  string response_id = 1;
+  // How it ended.
+  ResponseStatus status = 2;
+}
+
+// ErrorCode classifies errors so clients can react without parsing text.
+enum ErrorCode {
+  // Default value. Never sent.
+  ERROR_CODE_UNSPECIFIED = 0;
+  // The client sent something malformed or out of order.
+  ERROR_CODE_INVALID_MESSAGE = 1;
+  // The tenant has no active key for the requested provider.
+  ERROR_CODE_PROVIDER_KEY_MISSING = 2;
+  // The provider rejected the tenant's key.
+  ERROR_CODE_PROVIDER_AUTH_FAILED = 3;
+  // The provider could not be reached or failed.
+  ERROR_CODE_PROVIDER_UNAVAILABLE = 4;
+  // Too many concurrent sessions for this tenant or gateway.
+  ERROR_CODE_SESSION_LIMIT = 5;
+  // Audio arrived faster than real time or frames were too large.
+  ERROR_CODE_RATE_LIMITED = 6;
+  // The session reached its maximum duration or idled out.
+  ERROR_CODE_SESSION_EXPIRED = 7;
+  // The gateway is shutting down; reconnect.
+  ERROR_CODE_SHUTTING_DOWN = 8;
+  // Unexpected gateway failure.
+  ERROR_CODE_INTERNAL = 9;
+  // The provider reported a problem with a request; the session continues.
+  ERROR_CODE_PROVIDER_ERROR = 10;
+}
+
+// Error reports a problem.
+message Error {
+  // What went wrong.
+  ErrorCode code = 1;
+  // Human-readable detail; never contains secrets.
+  string message = 2;
+  // Whether the gateway closes the socket after this message.
+  bool fatal = 3;
+}

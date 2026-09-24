@@ -1,0 +1,22 @@
+[package]
+name = "jarvis-common"
+version = "0.1.0"
+description = "Shared building blocks for Jarvis Rust services: mTLS identity, RPC authorization, logging"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+toml = "1"
+tonic = { version = "0.14", features = ["tls-ring"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+x509-parser = "0.18"
+zeroize = "1.8"
+
+[dev-dependencies]
+rcgen = "0.14"

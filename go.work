@@ -1,0 +1,10 @@
+go 1.27.1
+
+use (
+	./gen/go
+	./libs/go
+	./services/mcp-router
+	./services/orchestrator
+	./services/voice-gateway
+	./tools/go
+)

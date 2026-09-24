@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package jarvis.agent.v1;
+
+import "jarvis/common/v1/provider.proto";
+import "jarvis/knowledge/v1/knowledge.proto";
+
+// AgentWorkerService is the orchestrator's Python sidecar: the only place
+// that talks to LLM providers for reasoning. It is stateless: every call
+// carries all the context it needs, including the tenant's provider key,
+// which the orchestrator fetched from the Vault for that call. The sidecar
+// never stores keys, conversations or results.
+//
+// It listens on a Unix domain socket shared only with the orchestrator in the
+// same pod (file mode 0600), so provider keys never cross a network.
+service AgentWorkerService {
+  // Decide takes one step of an agent: given the conversation so far and the
+  // available tools, the model either answers or calls tools.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT     malformed request.
+  //   UNAUTHENTICATED      ERROR_REASON_PROVIDER_REJECTED_KEY.
+  //   RESOURCE_EXHAUSTED   ERROR_REASON_PROVIDER_RATE_LIMITED.
+  //   UNAVAILABLE          ERROR_REASON_PROVIDER_UNAVAILABLE.
+  rpc Decide(DecideRequest) returns (DecideResponse);
+
+  // ExtractKnowledge turns a conversation transcript into entities,
+  // relations and passages worth remembering, validated against the
+  // knowledge service's rules. Errors as for Decide.
+  rpc ExtractKnowledge(ExtractKnowledgeRequest) returns (ExtractKnowledgeResponse);
+}
+
+// ErrorReason values appear as `google.rpc.ErrorInfo.reason` (by value name),
+// domain "agent.jarvis".
+enum ErrorReason {
+  // Default value. Never sent.
+  ERROR_REASON_UNSPECIFIED = 0;
+  // The provider refused the API key.
+  ERROR_REASON_PROVIDER_REJECTED_KEY = 1;
+  // The provider's rate limit or quota was hit.
+  ERROR_REASON_PROVIDER_RATE_LIMITED = 2;
+  // The provider could not be reached or failed.
+  ERROR_REASON_PROVIDER_UNAVAILABLE = 3;
+  // The provider's answer could not be used (e.g. invalid structured output).
+  ERROR_REASON_INVALID_MODEL_OUTPUT = 4;
+}
+
+// Model selects a provider, model and key for one call.
+message Model {
+  // Provider (OpenAI and xAI are supported).
+  jarvis.common.v1.Provider provider = 1;
+  // Model id, e.g. "gpt-6-luna" or "grok-4.6".
+  string model = 2;
+  // The tenant's API key for the provider. Never stored or logged.
+  bytes api_key = 3 [debug_redact = true];
+}
+
+// ToolSpec is a function the model may call.
+message ToolSpec {
+  // Name: [a-zA-Z0-9_-]{1,64}.
+  string name = 1;
+  // What it does.
+  string description = 2;
+  // JSON Schema of the arguments (an object schema), as JSON.
+  string parameters_json = 3;
+}
+
+// ToolCall is a function call the model made.
+message ToolCall {
+  // The provider's call id; the result must refer to it.
+  string call_id = 1;
+  // Tool name.
+  string name = 2;
+  // Arguments as JSON.
+  string arguments_json = 3;
+}
+
+// Item is one entry of an agent's history.
+message Item {
+  // The entry.
+  oneof item {
+    // A message from the user (or the orchestrator on the user's behalf).
+    string user_text = 1;
+    // A previous model step, replayed verbatim.
+    ModelStep model_step = 2;
+    // The result of a tool call.
+    ToolResult tool_result = 3;
+  }
+}
+
+// ModelStep is what a model returned in one Decide call.
+message ModelStep {
+  // The provider's output items as JSON (including encrypted reasoning),
+  // replayed so the model keeps its context. Opaque to the orchestrator.
+  bytes provider_items = 1;
+}
+
+// ToolResult is the output of a tool call.
+message ToolResult {
+  // The call it answers.
+  string call_id = 1;
+  // The output, usually JSON.
+  string output = 2;
+}
+
+// DecideRequest is the input to Decide.
+message DecideRequest {
+  // Provider, model and key.
+  Model model = 1;
+  // System instructions.
+  string instructions = 2;
+  // History, oldest first.
+  repeated Item items = 3;
+  // Tools the model may call.
+  repeated ToolSpec tools = 4;
+  // Output limit in tokens, 1 to 32000 (default 2000).
+  int32 max_output_tokens = 5;
+}
+
+// DecideResponse is the output of Decide.
+message DecideResponse {
+  // Text for the user (the final answer when there are no tool calls).
+  string text = 1;
+  // Tools to call, in order; empty when the model answered.
+  repeated ToolCall tool_calls = 2;
+  // This step, to append to the history as a ModelStep.
+  ModelStep step = 3;
+  // Tokens used.
+  Usage usage = 4;
+}
+
+// Usage counts tokens of one call.
+message Usage {
+  // Input tokens.
+  int64 input_tokens = 1;
+  // Output tokens (including reasoning).
+  int64 output_tokens = 2;
+}
+
+// TranscriptTurn is one turn of a conversation.
+message TranscriptTurn {
+  // "user" or "assistant".
+  string speaker = 1;
+  // What was said.
+  string text = 2;
+}
+
+// ExtractKnowledgeRequest is the input to ExtractKnowledge.
+message ExtractKnowledgeRequest {
+  // Provider, model and key.
+  Model model = 1;
+  // The conversation, oldest first.
+  repeated TranscriptTurn turns = 2;
+  // The user's locale, e.g. "el-GR"; names and facts keep the conversation's language.
+  string locale = 3;
+  // When the conversation happened, RFC 3339, so relative dates ("on Friday")
+  // can be resolved.
+  string conversation_time = 4;
+}
+
+// ExtractKnowledgeResponse is the output of ExtractKnowledge. The lists are
+// ready for jarvis.knowledge.v1.UpsertKnowledgeRequest (limits respected).
+message ExtractKnowledgeResponse {
+  // Entities.
+  repeated jarvis.knowledge.v1.EntityInput entities = 1;
+  // Relations.
+  repeated jarvis.knowledge.v1.RelationInput relations = 2;
+  // Passages: the facts worth remembering, as standalone sentences.
+  repeated jarvis.knowledge.v1.PassageInput passages = 3;
+  // Tokens used.
+  Usage usage = 4;
+}

@@ -1,0 +1,362 @@
+syntax = "proto3";
+
+package jarvis.knowledge.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// KnowledgeService is Jarvis's long-term memory: a knowledge graph of
+// entities and the relations between them (Neo4j), plus passages of text
+// (Qdrant), searched together so the agent gets small, relevant context
+// instead of whole documents.
+//
+// The orchestrator writes what it learned (entities, relations and passages
+// that its LLM extracted from conversations, documents or tool results) with
+// UpsertKnowledge, and asks for context with Retrieve before answering. The
+// dashboard lets users inspect and delete what Jarvis remembers.
+//
+// Scopes: knowledge belongs to one tenant and is either private to one user
+// (SCOPE_USER) or shared by every user of the tenant (SCOPE_TENANT). A user
+// reads their own knowledge plus the tenant's shared knowledge. Nothing is
+// ever visible to another tenant.
+//
+// Security contract:
+//   * Callers authenticate with mutual TLS; a per-principal policy decides
+//     which RPCs each may use.
+//   * Text is embedded by a model running inside the service: knowledge is
+//     never sent to an external API.
+//   * Entities and relations are addressed within a scope; lookups outside
+//     the caller's tenant and user are reported as NOT_FOUND.
+//
+// Errors use canonical gRPC status codes with a google.rpc.ErrorInfo detail
+// (domain "knowledge.jarvis", reason an ErrorReason value name) where useful.
+service KnowledgeService {
+  // UpsertKnowledge stores entities, relations and passages learned from one
+  // source. Idempotent: entities are matched by type and normalized name,
+  // relations by their two entities and type, passages by id. Retrying a
+  // failed call converges.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT  a field is missing, malformed or over its limit.
+  //   UNAVAILABLE       ERROR_REASON_STORE_UNAVAILABLE.
+  rpc UpsertKnowledge(UpsertKnowledgeRequest) returns (UpsertKnowledgeResponse);
+
+  // Retrieve returns the knowledge most relevant to a query, as compact
+  // context text within a token budget plus the structured items it holds.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT  a field is missing or malformed.
+  //   UNAVAILABLE       ERROR_REASON_STORE_UNAVAILABLE.
+  rpc Retrieve(RetrieveRequest) returns (RetrieveResponse);
+
+  // GetEntity returns one entity and its relations.
+  //
+  // Errors:
+  //   NOT_FOUND  ERROR_REASON_ENTITY_NOT_FOUND.
+  rpc GetEntity(GetEntityRequest) returns (GetEntityResponse);
+
+  // DeleteSource forgets what one source contributed: its passages, and the
+  // relations and entities that no other source supports. Idempotent.
+  rpc DeleteSource(DeleteSourceRequest) returns (DeleteSourceResponse);
+
+  // DeleteEntity forgets one entity and its relations. Passages that mention
+  // it are kept. Idempotent.
+  rpc DeleteEntity(DeleteEntityRequest) returns (DeleteEntityResponse);
+
+  // DeleteUserKnowledge forgets everything private to one user (the tenant's
+  // shared knowledge is kept). Idempotent.
+  rpc DeleteUserKnowledge(DeleteUserKnowledgeRequest) returns (DeleteUserKnowledgeResponse);
+}
+
+// ErrorReason values appear as `google.rpc.ErrorInfo.reason` (by value name).
+enum ErrorReason {
+  // Default value. Never sent.
+  ERROR_REASON_UNSPECIFIED = 0;
+  // No such entity in the caller's scope.
+  ERROR_REASON_ENTITY_NOT_FOUND = 1;
+  // Neo4j or Qdrant could not be reached.
+  ERROR_REASON_STORE_UNAVAILABLE = 2;
+}
+
+// Scope says who can read a piece of knowledge.
+enum Scope {
+  // Default value. Treated as SCOPE_USER where a scope is optional.
+  SCOPE_UNSPECIFIED = 0;
+  // Private to the user named in the request.
+  SCOPE_USER = 1;
+  // Shared by every user of the tenant.
+  SCOPE_TENANT = 2;
+}
+
+// Source is where knowledge came from.
+message Source {
+  // The caller's id for the source, e.g. "conversation:6f1c…" or
+  // "gdrive:1AbC…"; 1 to 128 printable ASCII characters. Required.
+  string id = 1;
+  // What kind of source: [a-z][a-z0-9_]{0,31}, e.g. conversation, document,
+  // email, note, tool. Required.
+  string kind = 2;
+  // Human-readable title, up to 200 characters.
+  string title = 3;
+  // Link back to the original, up to 2048 characters.
+  string uri = 4;
+  // When the source was written or the conversation happened.
+  google.protobuf.Timestamp occurred_time = 5;
+}
+
+// EntityInput is an entity to create or update.
+message EntityInput {
+  // Entity type: [A-Z][A-Za-z0-9]{0,31}, e.g. Person, Project, Organization,
+  // Place, Event, Task, Topic. Required.
+  string type = 1;
+  // Name, 1 to 200 characters. Required. Together with the type it
+  // identifies the entity (case, accents and spacing are ignored).
+  string name = 2;
+  // Other names the entity goes by (nicknames, inflected forms), up to 20 of
+  // up to 200 characters each. Merged with those already known.
+  repeated string aliases = 3;
+  // What the entity is, up to 2000 characters. Replaces the known
+  // description when not empty.
+  string description = 4;
+}
+
+// EntityRef names an entity in the same scope; it is created if unknown.
+message EntityRef {
+  // Entity type (see EntityInput.type).
+  string type = 1;
+  // Entity name (see EntityInput.name).
+  string name = 2;
+}
+
+// RelationInput is a relation between two entities.
+message RelationInput {
+  // The entity the relation goes from.
+  EntityRef source = 1;
+  // Relation type: [A-Z][A-Z0-9_]{0,63}, e.g. WORKS_ON, MANAGES, LIVES_IN.
+  string type = 2;
+  // The entity the relation goes to.
+  EntityRef target = 3;
+  // The relation as a sentence, up to 1000 characters, e.g. "Maria leads
+  // the Atlas project since May 2026". Replaces the known one when not empty.
+  string fact = 4;
+  // How strongly the source supports the relation, 0 to 1 (default 0.5).
+  optional float weight = 5;
+}
+
+// PassageInput is a piece of text to remember and search.
+message PassageInput {
+  // Stable id within the source, 1 to 128 printable ASCII characters;
+  // defaults to a hash of the source id and text.
+  string id = 1;
+  // The text, 1 to 8000 characters. Callers split longer text.
+  string text = 2;
+  // Entities the passage is about, up to 50.
+  repeated EntityRef mentions = 3;
+}
+
+// UpsertKnowledgeRequest is the input to UpsertKnowledge.
+message UpsertKnowledgeRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // The user the knowledge is about (and private to, with SCOPE_USER);
+  // 1 to 128 printable ASCII characters.
+  string user_id = 2;
+  // Who may read it; default SCOPE_USER.
+  Scope scope = 3;
+  // Where it came from. Required.
+  Source source = 4;
+  // Entities, up to 200.
+  repeated EntityInput entities = 5;
+  // Relations, up to 500.
+  repeated RelationInput relations = 6;
+  // Passages, up to 200.
+  repeated PassageInput passages = 7;
+}
+
+// UpsertKnowledgeResponse is the output of UpsertKnowledge.
+message UpsertKnowledgeResponse {
+  // Entities created or updated (including those created from references).
+  int32 entities = 1;
+  // Relations created or updated.
+  int32 relations = 2;
+  // Passages stored.
+  int32 passages = 3;
+}
+
+// RetrieveRequest is the input to Retrieve.
+message RetrieveRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // The user asking; sees their own and the tenant's shared knowledge.
+  string user_id = 2;
+  // What the agent needs context for, 1 to 2000 characters, e.g. the user's
+  // latest utterance.
+  string query = 3;
+  // Maximum size of `context` in estimated tokens, 50 to 8000 (default 800).
+  int32 token_budget = 4;
+  // How far to follow relations from the entities found, 0 to 2 (default 1).
+  optional int32 max_hops = 5;
+  // Only passages from these source kinds; empty means all.
+  repeated string source_kinds = 6;
+}
+
+// Entity is a stored entity.
+message Entity {
+  // Identifier within its scope: "<type>:<normalized name>".
+  string key = 1;
+  // Entity type.
+  string type = 2;
+  // Display name.
+  string name = 3;
+  // Other names.
+  repeated string aliases = 4;
+  // Description.
+  string description = 5;
+  // Who can read it.
+  Scope scope = 6;
+  // Relevance to the query (Retrieve only), 0 to 1.
+  float score = 7;
+  // When it last changed.
+  google.protobuf.Timestamp update_time = 8;
+}
+
+// Relation is a stored relation.
+message Relation {
+  // Key of the entity the relation goes from.
+  string source_key = 1;
+  // Its display name.
+  string source_name = 2;
+  // Relation type.
+  string type = 3;
+  // Key of the entity the relation goes to.
+  string target_key = 4;
+  // Its display name.
+  string target_name = 5;
+  // The relation as a sentence, if known.
+  string fact = 6;
+  // Strength, 0 to 1.
+  float weight = 7;
+  // Who can read it.
+  Scope scope = 8;
+  // Relevance to the query (Retrieve only), 0 to 1.
+  float score = 9;
+  // Distance from the entities that matched the query (Retrieve only).
+  int32 hops = 10;
+  // When it last changed.
+  google.protobuf.Timestamp update_time = 11;
+}
+
+// Passage is a stored passage.
+message Passage {
+  // Id within its source.
+  string id = 1;
+  // The text.
+  string text = 2;
+  // Where it came from.
+  Source source = 3;
+  // Keys of the entities it is about.
+  repeated string mention_keys = 4;
+  // Who can read it.
+  Scope scope = 5;
+  // Relevance to the query, 0 to 1.
+  float score = 6;
+}
+
+// RetrieveResponse is the output of Retrieve.
+message RetrieveResponse {
+  // The context to give the model: the items below, compactly formatted, at
+  // most `token_budget` estimated tokens. Empty when nothing is relevant.
+  string context = 1;
+  // Estimated tokens of `context`.
+  int32 estimated_tokens = 2;
+  // Entities in the context, most relevant first.
+  repeated Entity entities = 3;
+  // Relations in the context, most relevant first.
+  repeated Relation relations = 4;
+  // Passages in the context, most relevant first.
+  repeated Passage passages = 5;
+  // Relevant items were left out to stay within the budget.
+  bool truncated = 6;
+  // How long retrieval took.
+  google.protobuf.Duration took = 7;
+}
+
+// GetEntityRequest is the input to GetEntity.
+message GetEntityRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // The user asking.
+  string user_id = 2;
+  // Which scope the entity is in; default SCOPE_USER.
+  Scope scope = 3;
+  // Entity key.
+  string key = 4;
+  // Maximum relations to return, 1 to 500 (default 100).
+  int32 relation_limit = 5;
+}
+
+// GetEntityResponse is the output of GetEntity.
+message GetEntityResponse {
+  // The entity.
+  Entity entity = 1;
+  // Its relations visible to the user, strongest first.
+  repeated Relation relations = 2;
+}
+
+// DeleteSourceRequest is the input to DeleteSource.
+message DeleteSourceRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // The user whose knowledge (with SCOPE_USER) is affected.
+  string user_id = 2;
+  // Which scope; default SCOPE_USER.
+  Scope scope = 3;
+  // The source id.
+  string source_id = 4;
+}
+
+// DeleteSourceResponse is the output of DeleteSource.
+message DeleteSourceResponse {
+  // Passages deleted.
+  int32 passages = 1;
+  // Relations deleted (no other source supported them).
+  int32 relations = 2;
+  // Entities deleted (no other source or relation kept them).
+  int32 entities = 3;
+}
+
+// DeleteEntityRequest is the input to DeleteEntity.
+message DeleteEntityRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // The user whose knowledge (with SCOPE_USER) is affected.
+  string user_id = 2;
+  // Which scope; default SCOPE_USER.
+  Scope scope = 3;
+  // Entity key.
+  string key = 4;
+}
+
+// DeleteEntityResponse is the output of DeleteEntity.
+message DeleteEntityResponse {
+  // Relations deleted with the entity.
+  int32 relations = 1;
+}
+
+// DeleteUserKnowledgeRequest is the input to DeleteUserKnowledge.
+message DeleteUserKnowledgeRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // The user whose private knowledge to delete.
+  string user_id = 2;
+}
+
+// DeleteUserKnowledgeResponse is the output of DeleteUserKnowledge.
+message DeleteUserKnowledgeResponse {
+  // Passages deleted.
+  int32 passages = 1;
+  // Entities deleted.
+  int32 entities = 2;
+  // Relations deleted.
+  int32 relations = 3;
+}

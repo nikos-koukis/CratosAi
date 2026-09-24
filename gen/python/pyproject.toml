@@ -1,0 +1,23 @@
+[project]
+name = "jarvis-proto"
+version = "0.1.0"
+description = "Python messages and gRPC stubs generated from /proto (pnpm nx run proto:generate)."
+requires-python = ">=3.14,<3.15"
+dependencies = [
+  "grpcio>=1.84.0,<2",
+  "protobuf>=7.35.1,<8",
+]
+
+[dependency-groups]
+# Code generators, pinned: the generated code must not change between machines.
+codegen = [
+  "grpcio-tools==1.84.0",
+  "mypy-protobuf==5.1.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.32,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jarvis"]

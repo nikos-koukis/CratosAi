@@ -1,0 +1,37 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "go-libs",
+  "projectType": "library",
+  "sourceRoot": "libs/go",
+  "tags": ["type:lib", "lang:go"],
+  "implicitDependencies": ["proto"],
+  "namedInputs": {
+    "go": ["{projectRoot}/**/*", "{workspaceRoot}/gen/go/**/*", "{workspaceRoot}/go.work", "{workspaceRoot}/tools/go/go.mod"]
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": { "command": "go build ./...", "cwd": "libs/go" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": { "command": "go test -race ./...", "cwd": "libs/go" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": { "command": "go vet ./... && go tool staticcheck ./...", "cwd": "libs/go" }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": { "command": "test -z \"$(gofmt -l .)\" || { gofmt -l .; exit 1; }", "cwd": "libs/go" }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "gofmt -w .", "cwd": "libs/go" }
+    }
+  }
+}

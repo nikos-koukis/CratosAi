@@ -1,0 +1,421 @@
+syntax = "proto3";
+
+package jarvis.mcp.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// McpRouterService connects Jarvis to external MCP servers (Jira, ClickUp,
+// Linear, Notion, Slack, Gmail, ...) on behalf of each user of a tenant.
+//
+// The dashboard manages integrations: it connects a server, sends the user
+// to the returned authorization URL and relays the OAuth callback with
+// CompleteAuthorization. The orchestrator uses the connected tools with
+// ListTools and CallTool.
+//
+// Security contract:
+//   * Callers authenticate with mutual TLS; a per-principal policy decides
+//     which RPCs each may use (dashboard: management, orchestrator: tools).
+//   * OAuth tokens and bearer tokens are sealed by the BYOK Vault before they
+//     are stored; the router never persists them in plaintext and never
+//     returns them.
+//   * Every outbound request (MCP, OAuth discovery, token exchange) goes only
+//     to public HTTPS endpoints: private, loopback and link-local addresses
+//     are refused at connection time.
+//   * Integrations belong to one tenant and one user; lookups for another
+//     tenant or user are reported as NOT_FOUND.
+//
+// Errors use canonical gRPC status codes with a google.rpc.ErrorInfo detail
+// (domain "mcp.jarvis", reason an ErrorReason value name) where useful.
+service McpRouterService {
+  // ListCatalog lists the well-known servers users can connect.
+  rpc ListCatalog(ListCatalogRequest) returns (ListCatalogResponse);
+
+  // CreateIntegration registers a server for a user. For OAuth servers the
+  // response carries the URL to send the user to; the integration becomes
+  // CONNECTED after CompleteAuthorization.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT     a field is missing or malformed.
+  //   PERMISSION_DENIED    ERROR_REASON_SERVER_NOT_ALLOWED: the URL is not an
+  //                        allowed public HTTPS endpoint.
+  //   FAILED_PRECONDITION  ERROR_REASON_CATALOG_NOT_CONFIGURED: the server
+  //                        needs OAuth client credentials the operator has not
+  //                        configured; ERROR_REASON_AUTHORIZATION_FAILED: OAuth
+  //                        discovery or client registration failed.
+  rpc CreateIntegration(CreateIntegrationRequest) returns (CreateIntegrationResponse);
+
+  // CompleteAuthorization finishes an OAuth authorization with the values
+  // from the redirect back to the application.
+  //
+  // Errors:
+  //   FAILED_PRECONDITION  ERROR_REASON_AUTHORIZATION_FAILED: unknown, used or
+  //                        expired state, issuer mismatch, the user denied
+  //                        access, or the token exchange failed.
+  rpc CompleteAuthorization(CompleteAuthorizationRequest) returns (CompleteAuthorizationResponse);
+
+  // ReauthorizeIntegration starts a new OAuth authorization for an existing
+  // integration (e.g. after NEEDS_REAUTHORIZATION).
+  rpc ReauthorizeIntegration(ReauthorizeIntegrationRequest) returns (ReauthorizeIntegrationResponse);
+
+  // ListIntegrations lists a user's integrations.
+  rpc ListIntegrations(ListIntegrationsRequest) returns (ListIntegrationsResponse);
+
+  // DeleteIntegration disconnects a server and destroys its stored tokens.
+  // Idempotent.
+  rpc DeleteIntegration(DeleteIntegrationRequest) returns (DeleteIntegrationResponse);
+
+  // ListTools returns the tools of all of a user's connected integrations.
+  // Integrations that cannot be reached are listed in `unavailable` instead
+  // of failing the call.
+  rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
+
+  // CallTool invokes one tool. A tool that runs but fails returns
+  // `is_error` = true, not an RPC error.
+  //
+  // Errors:
+  //   NOT_FOUND            ERROR_REASON_INTEGRATION_NOT_FOUND.
+  //   FAILED_PRECONDITION  ERROR_REASON_NOT_CONNECTED or
+  //                        ERROR_REASON_NEEDS_REAUTHORIZATION.
+  //   RESOURCE_EXHAUSTED   ERROR_REASON_RATE_LIMITED.
+  //   UNAVAILABLE          ERROR_REASON_UPSTREAM_UNAVAILABLE.
+  //   ABORTED              ERROR_REASON_UPSTREAM_ERROR (protocol error from
+  //                        the server, e.g. unknown tool or bad arguments).
+  //   DEADLINE_EXCEEDED    the tool did not answer within the timeout.
+  rpc CallTool(CallToolRequest) returns (CallToolResponse);
+}
+
+// ErrorReason values appear as `google.rpc.ErrorInfo.reason` (by value name).
+enum ErrorReason {
+  // Default value. Never sent.
+  ERROR_REASON_UNSPECIFIED = 0;
+  // No such integration for this tenant and user.
+  ERROR_REASON_INTEGRATION_NOT_FOUND = 1;
+  // The integration is waiting for the user's authorization.
+  ERROR_REASON_NOT_CONNECTED = 2;
+  // The stored authorization stopped working; the user must reauthorize.
+  ERROR_REASON_NEEDS_REAUTHORIZATION = 3;
+  // Too many calls for this tenant or integration.
+  ERROR_REASON_RATE_LIMITED = 4;
+  // The MCP server could not be reached.
+  ERROR_REASON_UPSTREAM_UNAVAILABLE = 5;
+  // The MCP server answered with a protocol error.
+  ERROR_REASON_UPSTREAM_ERROR = 6;
+  // OAuth discovery, registration, consent or token exchange failed.
+  ERROR_REASON_AUTHORIZATION_FAILED = 7;
+  // The server URL is not an allowed public HTTPS endpoint.
+  ERROR_REASON_SERVER_NOT_ALLOWED = 8;
+  // The catalog server needs OAuth client credentials that are not configured.
+  ERROR_REASON_CATALOG_NOT_CONFIGURED = 9;
+}
+
+// AuthKind is how the router authenticates to a server.
+enum AuthKind {
+  // Default value. Never sent.
+  AUTH_KIND_UNSPECIFIED = 0;
+  // OAuth 2.1 authorization code flow with PKCE, per the MCP specification.
+  AUTH_KIND_OAUTH = 1;
+  // A static bearer token (API key or personal access token).
+  AUTH_KIND_BEARER_TOKEN = 2;
+}
+
+// IntegrationStatus is the lifecycle of an integration.
+enum IntegrationStatus {
+  // Default value. Never sent.
+  INTEGRATION_STATUS_UNSPECIFIED = 0;
+  // Waiting for the user to authorize.
+  INTEGRATION_STATUS_PENDING_AUTHORIZATION = 1;
+  // Usable.
+  INTEGRATION_STATUS_CONNECTED = 2;
+  // Tokens were rejected or could not be refreshed; reauthorize.
+  INTEGRATION_STATUS_NEEDS_REAUTHORIZATION = 3;
+}
+
+// CatalogServer is a well-known MCP server.
+message CatalogServer {
+  // Stable identifier, e.g. "atlassian".
+  string slug = 1;
+  // Display name.
+  string name = 2;
+  // MCP endpoint.
+  string url = 3;
+  // How the router authenticates.
+  AuthKind auth = 4;
+  // False when the server needs OAuth client credentials that are missing.
+  bool available = 5;
+  // Setup notes for operators and users.
+  string notes = 6;
+}
+
+// Integration is a user's connection to one MCP server.
+message Integration {
+  // Server-assigned id (UUID).
+  string integration_id = 1;
+  // Owning tenant (UUID).
+  string tenant_id = 2;
+  // Owning user.
+  string user_id = 3;
+  // Display name, e.g. "Work Jira".
+  string display_name = 4;
+  // MCP endpoint.
+  string server_url = 5;
+  // Catalog slug, empty for custom servers.
+  string catalog_slug = 6;
+  // How the router authenticates.
+  AuthKind auth = 7;
+  // Current status.
+  IntegrationStatus status = 8;
+  // Why the status is what it is (e.g. the last authorization error).
+  string status_detail = 9;
+  // When it was created.
+  google.protobuf.Timestamp create_time = 10;
+  // When it last changed.
+  google.protobuf.Timestamp update_time = 11;
+}
+
+// ListCatalogRequest is the input to ListCatalog.
+message ListCatalogRequest {}
+
+// ListCatalogResponse is the output of ListCatalog.
+message ListCatalogResponse {
+  // Known servers.
+  repeated CatalogServer servers = 1;
+}
+
+// CreateIntegrationRequest is the input to CreateIntegration.
+message CreateIntegrationRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // Owning user, 1 to 128 printable ASCII.
+  string user_id = 2;
+  // Which server. Required.
+  oneof server {
+    // A catalog server.
+    string catalog_slug = 3;
+    // A custom MCP endpoint (https), if the router allows custom servers.
+    string server_url = 4;
+  }
+  // Display name, 1 to 64 characters; defaults to the catalog name.
+  string display_name = 5;
+  // For AUTH_KIND_BEARER_TOKEN servers: the token. Sealed before storage.
+  bytes bearer_token = 6 [debug_redact = true];
+}
+
+// CreateIntegrationResponse is the output of CreateIntegration.
+message CreateIntegrationResponse {
+  // The new integration.
+  Integration integration = 1;
+  // For OAuth: where to send the user. Valid for 10 minutes.
+  string authorization_url = 2;
+}
+
+// CompleteAuthorizationRequest carries the query parameters of the OAuth
+// redirect back to the application.
+message CompleteAuthorizationRequest {
+  // `state`.
+  string state = 1;
+  // `code`; empty when the authorization server returned an error.
+  string code = 2;
+  // `iss` (RFC 9207), if present.
+  string iss = 3;
+  // `error`, if the user denied access or authorization failed.
+  string error = 4;
+}
+
+// CompleteAuthorizationResponse is the output of CompleteAuthorization.
+message CompleteAuthorizationResponse {
+  // The now CONNECTED integration.
+  Integration integration = 1;
+}
+
+// ReauthorizeIntegrationRequest is the input to ReauthorizeIntegration.
+message ReauthorizeIntegrationRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // Owning user.
+  string user_id = 2;
+  // Integration to reauthorize.
+  string integration_id = 3;
+}
+
+// ReauthorizeIntegrationResponse is the output of ReauthorizeIntegration.
+message ReauthorizeIntegrationResponse {
+  // Where to send the user. Valid for 10 minutes.
+  string authorization_url = 1;
+}
+
+// ListIntegrationsRequest is the input to ListIntegrations.
+message ListIntegrationsRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // Owning user.
+  string user_id = 2;
+}
+
+// ListIntegrationsResponse is the output of ListIntegrations.
+message ListIntegrationsResponse {
+  // The user's integrations, newest first.
+  repeated Integration integrations = 1;
+}
+
+// DeleteIntegrationRequest is the input to DeleteIntegration.
+message DeleteIntegrationRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // Owning user.
+  string user_id = 2;
+  // Integration to delete.
+  string integration_id = 3;
+}
+
+// DeleteIntegrationResponse is the output of DeleteIntegration.
+message DeleteIntegrationResponse {}
+
+// ListToolsRequest is the input to ListTools.
+message ListToolsRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // User whose integrations to use.
+  string user_id = 2;
+  // Bypass the tool-list cache.
+  bool refresh = 3;
+}
+
+// ToolAnnotations are the server's hints about a tool. Untrusted: a server
+// can claim anything. Absent hints take the MCP defaults (not read-only,
+// destructive, not idempotent, open world).
+message ToolAnnotations {
+  // Does not modify its environment.
+  bool read_only = 1;
+  // May make destructive updates (only meaningful when not read-only).
+  bool destructive = 2;
+  // Repeating a call with the same arguments has no extra effect.
+  bool idempotent = 3;
+  // Interacts with an open world of external entities.
+  bool open_world = 4;
+}
+
+// Tool is one callable tool.
+message Tool {
+  // Integration that provides it.
+  string integration_id = 1;
+  // Display name of that integration.
+  string integration_name = 2;
+  // Tool name, as the server knows it.
+  string name = 3;
+  // Human-readable title.
+  string title = 4;
+  // What the tool does (from the server; untrusted).
+  string description = 5;
+  // JSON Schema of the arguments, as JSON.
+  string input_schema_json = 6;
+  // JSON Schema of structured results, as JSON; empty if none.
+  string output_schema_json = 7;
+  // Behaviour hints.
+  ToolAnnotations annotations = 8;
+}
+
+// IntegrationError says why an integration's tools are missing.
+message IntegrationError {
+  // The integration.
+  string integration_id = 1;
+  // Its display name.
+  string integration_name = 2;
+  // Why.
+  ErrorReason reason = 3;
+  // Detail for logs and UIs.
+  string message = 4;
+}
+
+// ListToolsResponse is the output of ListTools.
+message ListToolsResponse {
+  // Tools of every integration that answered.
+  repeated Tool tools = 1;
+  // Integrations whose tools could not be listed.
+  repeated IntegrationError unavailable = 2;
+}
+
+// CallToolRequest is the input to CallTool.
+message CallToolRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // User on whose behalf the tool runs.
+  string user_id = 2;
+  // Integration providing the tool.
+  string integration_id = 3;
+  // Tool name.
+  string tool_name = 4;
+  // Arguments as a JSON object; empty means {}.
+  string arguments_json = 5;
+  // Timeout; default 30 s, at most 120 s.
+  google.protobuf.Duration timeout = 6;
+}
+
+// Content is one block of a tool result.
+message Content {
+  // The block.
+  oneof content {
+    // Text.
+    TextContent text = 1;
+    // An image.
+    BinaryContent image = 2;
+    // Audio.
+    BinaryContent audio = 3;
+    // A link to a resource the client may fetch.
+    ResourceLink resource_link = 4;
+    // A resource embedded in the result.
+    EmbeddedResource resource = 5;
+  }
+}
+
+// TextContent is text.
+message TextContent {
+  // The text.
+  string text = 1;
+}
+
+// BinaryContent is image or audio data.
+message BinaryContent {
+  // MIME type.
+  string mime_type = 1;
+  // Raw bytes.
+  bytes data = 2;
+}
+
+// ResourceLink points at a resource.
+message ResourceLink {
+  // Resource URI.
+  string uri = 1;
+  // Name.
+  string name = 2;
+  // MIME type, if known.
+  string mime_type = 3;
+  // Description.
+  string description = 4;
+}
+
+// EmbeddedResource is a resource included in the result.
+message EmbeddedResource {
+  // Resource URI.
+  string uri = 1;
+  // MIME type, if known.
+  string mime_type = 2;
+  // Text contents (text resources).
+  string text = 3;
+  // Binary contents (blob resources).
+  bytes blob = 4;
+}
+
+// CallToolResponse is the output of CallTool.
+message CallToolResponse {
+  // Result blocks, in order.
+  repeated Content content = 1;
+  // Structured result as JSON; empty if the tool returned none.
+  string structured_content_json = 2;
+  // The tool ran but reported failure (details in `content`).
+  bool is_error = 3;
+  // Blocks were dropped or cut to fit the router's result size limit.
+  bool truncated = 4;
+  // How long the call took.
+  google.protobuf.Duration duration = 5;
+}

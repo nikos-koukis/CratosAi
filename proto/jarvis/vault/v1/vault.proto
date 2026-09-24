@@ -1,0 +1,252 @@
+syntax = "proto3";
+
+package jarvis.vault.v1;
+
+import "google/protobuf/timestamp.proto";
+import "jarvis/common/v1/provider.proto";
+
+// VaultService stores tenant-owned ("bring your own key") provider API keys
+// encrypted at rest and releases plaintext only to authorised internal
+// services.
+//
+// Security contract, binding on every implementation and caller:
+//   * Plaintext secrets exist only in process memory, are zeroized after use,
+//     and are never written to disk, logs, traces, metrics or error messages.
+//   * Every field carrying plaintext is marked `debug_redact`. Logging and
+//     tracing interceptors in every language MUST honour that option.
+//   * Callers authenticate with mutual TLS. Caller identity comes from the
+//     client certificate, never from request fields.
+//   * `tenant_id` in a request is checked against the authenticated principal.
+//     A key that exists but belongs to another tenant is reported as
+//     NOT_FOUND, so key existence cannot be probed across tenants.
+//   * Callers send an `x-request-id` metadata header; it is recorded in the
+//     audit log alongside the caller identity and key id.
+//
+// Errors use canonical gRPC status codes. When a caller may need to branch on
+// the cause, the status carries a google.rpc.ErrorInfo detail with domain
+// "vault.jarvis" and `reason` set to an ErrorReason value name.
+service VaultService {
+  // CreateKey encrypts and stores a new provider API key for a tenant.
+  //
+  // A tenant has at most one ACTIVE key per provider. Set `replace_active` to
+  // rotate without a gap in which no key is available.
+  //
+  // Idempotent on `request_id`: a retry with the same id and payload returns
+  // the original response.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT   a field is missing or malformed.
+  //   ALREADY_EXISTS     ERROR_REASON_ACTIVE_KEY_EXISTS, or
+  //                      ERROR_REASON_REQUEST_ID_CONFLICT (same request_id,
+  //                      different payload).
+  //   PERMISSION_DENIED  caller may not manage keys for this tenant.
+  rpc CreateKey(CreateKeyRequest) returns (CreateKeyResponse);
+
+  // GetDecryptedKey returns the plaintext of an ACTIVE key.
+  //
+  // Restricted to internal runtime services (voice gateway, orchestrator, MCP
+  // router). It must never be reachable from the dashboard or a client app.
+  // Every call, successful or not, is audit-logged without the secret.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT     a field is missing or malformed.
+  //   NOT_FOUND            ERROR_REASON_KEY_NOT_FOUND: no such key for this
+  //                        tenant, or no ACTIVE key for the given provider.
+  //   FAILED_PRECONDITION  ERROR_REASON_KEY_REVOKED: the key was revoked.
+  //   PERMISSION_DENIED    caller may not read plaintext keys.
+  rpc GetDecryptedKey(GetDecryptedKeyRequest) returns (GetDecryptedKeyResponse);
+
+  // RevokeKey permanently disables a key and destroys its ciphertext
+  // (crypto-shredding). Metadata is kept for the audit trail. Irreversible.
+  //
+  // Idempotent: revoking an already revoked key succeeds and returns the
+  // existing metadata unchanged.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT   a field is missing or malformed.
+  //   NOT_FOUND          ERROR_REASON_KEY_NOT_FOUND.
+  //   PERMISSION_DENIED  caller may not manage keys for this tenant.
+  rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
+
+  // SealData encrypts a small secret that the calling service stores itself
+  // (for example OAuth tokens), bound to a tenant, a purpose and a subject.
+  // The same envelope encryption as provider keys; only the Vault can open it.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT   a field is missing or malformed.
+  //   PERMISSION_DENIED  caller may not seal data.
+  rpc SealData(SealDataRequest) returns (SealDataResponse);
+
+  // OpenData decrypts what SealData produced. Tenant, purpose and subject
+  // must be exactly those it was sealed with.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT     a field is missing or malformed.
+  //   FAILED_PRECONDITION  ERROR_REASON_SEALED_DATA_INVALID: different
+  //                        binding, tampered, or sealed under another master key.
+  //   PERMISSION_DENIED    caller may not open data.
+  rpc OpenData(OpenDataRequest) returns (OpenDataResponse);
+}
+
+// KeyStatus is the lifecycle state of a stored key.
+enum KeyStatus {
+  // Default value. Never returned by the server.
+  KEY_STATUS_UNSPECIFIED = 0;
+  // The key can be decrypted.
+  KEY_STATUS_ACTIVE = 1;
+  // The key was revoked and its ciphertext destroyed. Terminal state.
+  KEY_STATUS_REVOKED = 2;
+}
+
+// RevocationReason records why a key was revoked, for the audit trail.
+enum RevocationReason {
+  // Default value. Invalid in RevokeKeyRequest; reported for ACTIVE keys.
+  REVOCATION_REASON_UNSPECIFIED = 0;
+  // A tenant user removed the key.
+  REVOCATION_REASON_USER_REQUESTED = 1;
+  // The key was replaced by a newer one.
+  REVOCATION_REASON_ROTATED = 2;
+  // The key is known or suspected to be leaked.
+  REVOCATION_REASON_COMPROMISED = 3;
+}
+
+// ErrorReason values appear as `google.rpc.ErrorInfo.reason` (by value name)
+// on failed calls, with domain "vault.jarvis".
+enum ErrorReason {
+  // Default value. Never sent.
+  ERROR_REASON_UNSPECIFIED = 0;
+  // The key does not exist or belongs to another tenant.
+  ERROR_REASON_KEY_NOT_FOUND = 1;
+  // The key exists but was revoked.
+  ERROR_REASON_KEY_REVOKED = 2;
+  // The tenant already has an ACTIVE key for this provider.
+  ERROR_REASON_ACTIVE_KEY_EXISTS = 3;
+  // `request_id` was reused with a different payload.
+  ERROR_REASON_REQUEST_ID_CONFLICT = 4;
+  // Sealed data does not open under the given binding.
+  ERROR_REASON_SEALED_DATA_INVALID = 5;
+}
+
+// KeyMetadata describes a stored key. It never contains secret material.
+message KeyMetadata {
+  // Server-assigned identifier: UUIDv7, lowercase canonical string form.
+  string key_id = 1;
+  // Owning tenant (UUID).
+  string tenant_id = 2;
+  // Provider the key authenticates against.
+  jarvis.common.v1.Provider provider = 3;
+  // Human-readable label chosen by the tenant.
+  string label = 4;
+  // Last four characters of the secret, for display only (e.g. "a1b2").
+  string key_hint = 5;
+  // Current lifecycle state.
+  KeyStatus status = 6;
+  // When the key was stored.
+  google.protobuf.Timestamp create_time = 7;
+  // When the key was revoked. Unset while the key is ACTIVE.
+  google.protobuf.Timestamp revoke_time = 8;
+  // Why the key was revoked. REVOCATION_REASON_UNSPECIFIED while ACTIVE.
+  RevocationReason revocation_reason = 9;
+}
+
+// CreateKeyRequest is the input to VaultService.CreateKey.
+message CreateKeyRequest {
+  // Owning tenant (UUID). Must match the authenticated principal.
+  string tenant_id = 1;
+  // Provider the key authenticates against. Required.
+  jarvis.common.v1.Provider provider = 2;
+  // Human-readable label, 1 to 64 Unicode characters.
+  string label = 3;
+  // Plaintext API key: 16 to 8192 bytes of printable ASCII (0x21-0x7E).
+  // Callers MUST zeroize their copy once the call returns.
+  bytes secret = 4 [debug_redact = true];
+  // If the tenant already has an ACTIVE key for `provider`, revoke it with
+  // REVOCATION_REASON_ROTATED in the same transaction instead of failing with
+  // ALREADY_EXISTS.
+  bool replace_active = 5;
+  // Optional client-generated UUID that makes the call safe to retry.
+  string request_id = 6;
+}
+
+// CreateKeyResponse is the output of VaultService.CreateKey.
+message CreateKeyResponse {
+  // The newly stored key.
+  KeyMetadata key = 1;
+  // The key revoked because of `replace_active`. Unset if nothing rotated.
+  KeyMetadata replaced_key = 2;
+}
+
+// GetDecryptedKeyRequest is the input to VaultService.GetDecryptedKey.
+message GetDecryptedKeyRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // Which key to decrypt. Required.
+  oneof selector {
+    // A specific key by id.
+    string key_id = 2;
+    // The tenant's single ACTIVE key for this provider.
+    jarvis.common.v1.Provider provider = 3;
+  }
+}
+
+// GetDecryptedKeyResponse is the output of VaultService.GetDecryptedKey.
+message GetDecryptedKeyResponse {
+  // Id of the decrypted key; lets callers log which key they used.
+  string key_id = 1;
+  // Provider the key authenticates against.
+  jarvis.common.v1.Provider provider = 2;
+  // Plaintext API key. Keep in memory only, zeroize after use, never log.
+  bytes secret = 3 [debug_redact = true];
+}
+
+// RevokeKeyRequest is the input to VaultService.RevokeKey.
+message RevokeKeyRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // Key to revoke.
+  string key_id = 2;
+  // Why the key is being revoked. Required.
+  RevocationReason reason = 3;
+}
+
+// RevokeKeyResponse is the output of VaultService.RevokeKey.
+message RevokeKeyResponse {
+  // Metadata of the revoked key.
+  KeyMetadata key = 1;
+}
+
+// SealDataRequest is the input to VaultService.SealData.
+message SealDataRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // What the data is for, 1 to 64 of a-z 0-9 . _ - (e.g. "mcp.oauth-tokens").
+  string purpose = 2;
+  // What the data belongs to, 1 to 128 printable ASCII (e.g. an integration id).
+  string subject_id = 3;
+  // The secret, 1 to 65536 bytes. Callers MUST zeroize their copy afterwards.
+  bytes plaintext = 4 [debug_redact = true];
+}
+
+// SealDataResponse is the output of VaultService.SealData.
+message SealDataResponse {
+  // Opaque, versioned ciphertext; safe to store anywhere.
+  bytes sealed = 1;
+}
+
+// OpenDataRequest is the input to VaultService.OpenData.
+message OpenDataRequest {
+  // Tenant the data was sealed for.
+  string tenant_id = 1;
+  // Purpose it was sealed with.
+  string purpose = 2;
+  // Subject it was sealed with.
+  string subject_id = 3;
+  // Output of SealData.
+  bytes sealed = 4;
+}
+
+// OpenDataResponse is the output of VaultService.OpenData.
+message OpenDataResponse {
+  // The secret. Keep in memory only, zeroize after use, never log.
+  bytes plaintext = 1 [debug_redact = true];
+}

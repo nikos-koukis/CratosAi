@@ -1,0 +1,55 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "voice-gateway",
+  "projectType": "application",
+  "sourceRoot": "services/voice-gateway",
+  "tags": ["type:service", "lang:go"],
+  "implicitDependencies": ["proto", "go-libs"],
+  "namedInputs": {
+    "go": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/.dev/**/*",
+      "{workspaceRoot}/gen/go/**/*",
+      "{workspaceRoot}/libs/go/**/*",
+      "{workspaceRoot}/go.work",
+      "{workspaceRoot}/tools/go/go.mod"
+    ]
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": { "command": "go build ./...", "cwd": "services/voice-gateway" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": { "command": "go test -race ./...", "cwd": "services/voice-gateway" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": {
+        "command": "go vet ./... && go tool staticcheck ./... && bash -n scripts/*.sh",
+        "cwd": "services/voice-gateway"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "inputs": ["go"],
+      "options": {
+        "command": "test -z \"$(gofmt -l .)\" || { gofmt -l .; exit 1; }",
+        "cwd": "services/voice-gateway"
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "gofmt -w .", "cwd": "services/voice-gateway" }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "scripts/dev-run.sh", "cwd": "services/voice-gateway" }
+    }
+  }
+}

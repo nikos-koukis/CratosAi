@@ -1,0 +1,55 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "knowledge",
+  "projectType": "application",
+  "sourceRoot": "services/knowledge/src",
+  "tags": ["type:service", "lang:python"],
+  "implicitDependencies": ["proto"],
+  "namedInputs": {
+    "python": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/.dev/**/*",
+      "{workspaceRoot}/gen/python/**/*",
+      "{workspaceRoot}/pyproject.toml",
+      "{workspaceRoot}/uv.lock",
+      "{workspaceRoot}/.python-version"
+    ]
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": ["python"],
+      "options": {
+        "command": "uv sync --frozen --all-packages --all-groups --quiet && uv run --frozen python -m compileall -q src",
+        "cwd": "services/knowledge"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": ["python"],
+      "options": { "command": "uv run --frozen pytest -q", "cwd": "services/knowledge" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["python"],
+      "options": {
+        "command": "uv lock --check --quiet && uv run --frozen ruff check . && uv run --frozen mypy src tests && bash -n scripts/*.sh",
+        "cwd": "services/knowledge"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "inputs": ["python"],
+      "options": { "command": "uv run --frozen ruff format --check .", "cwd": "services/knowledge" }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "uv run --frozen ruff format .", "cwd": "services/knowledge" }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "scripts/dev-run.sh", "cwd": "services/knowledge" }
+    }
+  }
+}

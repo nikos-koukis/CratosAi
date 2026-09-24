@@ -1,0 +1,83 @@
+# jarvisd configuration. Copy to
+#   ~/Library/Application Support/Jarvis/daemon/daemon.toml
+# and `chmod 600` it: jarvisd refuses a config other users could modify.
+# Validate with: jarvisd check
+
+# Shown to approvers, so they know which machine a command will run on.
+device_name = "My MacBook"
+
+[network]
+# "tailscale": listen only on this Mac's Tailscale address and accept only
+#              tailnet peers (waits for Tailscale to connect).
+# "loopback":  127.0.0.1 only; for development.
+mode = "tailscale"
+port = 7443
+# gRPC reflection for grpcurl. Keep it off outside development.
+reflection = false
+
+[tls]
+# The server certificate and the CA that client (orchestrator) certificates
+# must chain to. The key must be mode 600. These directories become
+# protected paths automatically.
+cert = "~/Library/Application Support/Jarvis/daemon/tls/server.pem"
+key = "~/Library/Application Support/Jarvis/daemon/tls/server-key.pem"
+client_ca = "~/Library/Application Support/Jarvis/daemon/tls/ca.pem"
+
+# Callers, identified by the URI SAN of their client certificate.
+[[principal]]
+id = "spiffe://jarvis.local/orchestrator"
+allow = ["GetCapabilities", "ExecuteCommand"]
+
+# Devices whose signature approves a command outside the allowlist
+# (ECDSA P-256, base64 SEC1 public key). `jarvis-approve keygen` prints one.
+# Without any approver, only allowlisted commands can run.
+# [[approver]]
+# id = "my-iphone"
+# public_key = "BASE64..."
+
+[sandbox]
+# Commands run inside one of these directories (the first is the default).
+workspace_roots = ["~/dev"]
+# Extra paths no command may read or write. Always protected as well:
+# ~/.ssh, ~/.gnupg, ~/.aws, ~/.kube, ~/.docker, ~/.config/gh, keychains,
+# cookies, mail, messages, browser profiles, ~/Library/Application Support/Jarvis,
+# every .env file, and the directories holding this file and the TLS files.
+protected_paths = []
+# Extra programs that never run, even with approval. Always denied as well:
+# sudo, su, login, security, launchctl, crontab, dscl, csrutil, tccutil,
+# profiles, sysadminctl, spctl, systemsetup, sandbox-exec.
+denied_programs = []
+
+[limits]
+default_timeout_secs = 30
+max_timeout_secs = 300
+max_output_bytes = 1048576      # per stream (stdout, stderr)
+max_concurrent_commands = 4
+approval_ttl_secs = 300
+max_pending_approvals = 32
+
+# Allowlist: matching commands run without asking. A command matches when the
+# program is the same file and its arguments start with args_prefix (and, if
+# allow_extra_args is false, have nothing more). Grants (all false by default):
+#   writable        = create/modify/delete files in the working directory
+#   network         = outbound network access
+#   system_services = macOS services (launch apps, AppleScript, clipboard);
+#                     such commands can act outside the sandbox, so prefer
+#                     requires_approval = true for them.
+[[command]]
+program = "/usr/bin/git"
+args_prefix = ["status"]
+allow_extra_args = true
+description = "Show the working tree status"
+
+[[command]]
+program = "/bin/ls"
+allow_extra_args = true
+description = "List files"
+
+[[command]]
+program = "/usr/bin/open"
+args_prefix = ["-a", "Music"]
+system_services = true
+requires_approval = true
+description = "Open the Music app"

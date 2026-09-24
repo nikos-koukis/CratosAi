@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package jarvis.common.v1;
+
+// Provider identifies the third-party LLM vendor a tenant-owned (BYOK)
+// credential authenticates against.
+enum Provider {
+  // Default value. Never valid in a request.
+  PROVIDER_UNSPECIFIED = 0;
+  // OpenAI, including the Realtime API.
+  PROVIDER_OPENAI = 1;
+  // xAI, including the Realtime voice API.
+  PROVIDER_XAI = 2;
+  // Anthropic.
+  PROVIDER_ANTHROPIC = 3;
+  // Google Gemini API.
+  PROVIDER_GOOGLE = 4;
+}

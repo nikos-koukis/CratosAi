@@ -1,0 +1,5 @@
+# uv workspace for the Python projects of the monorepo: one lockfile
+# (uv.lock), one virtual environment (.venv). Python is pinned in
+# .python-version; uv downloads it when missing.
+[tool.uv.workspace]
+members = ["gen/python", "services/agent", "services/knowledge"]

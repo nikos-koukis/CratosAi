@@ -1,0 +1,14 @@
+# Development authorization policy: which mTLS client identity (the URI SAN
+# of its certificate) may call which knowledge RPC. Anything not listed is
+# denied. Production policies are deployed per environment, not from this file.
+
+# Orchestrator: stores what it learns and retrieves context; can forget a
+# source or entity it wrote, but cannot wipe a user's memory.
+[[principal]]
+id = "spiffe://jarvis.local/orchestrator"
+allow = ["UpsertKnowledge", "Retrieve", "GetEntity", "DeleteSource", "DeleteEntity"]
+
+# Dashboard backend: lets users inspect and delete what Jarvis remembers.
+[[principal]]
+id = "spiffe://jarvis.local/dashboard-api"
+allow = ["GetEntity", "DeleteSource", "DeleteEntity", "DeleteUserKnowledge"]
