@@ -17,8 +17,8 @@ import (
 	commonv1 "jarvis.internal/gen/go/jarvis/common/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
 	voicev1 "jarvis.internal/gen/go/jarvis/voice/v1"
+	"jarvis.internal/libs/go/usertoken"
 	"jarvis.internal/libs/go/vaultclient"
-	"jarvis.internal/voice-gateway/internal/auth"
 	"jarvis.internal/voice-gateway/internal/metrics"
 	"jarvis.internal/voice-gateway/internal/realtime"
 	"jarvis.internal/voice-gateway/internal/realtime/realtimetest"
@@ -57,7 +57,7 @@ type harness struct {
 	gateway  *server.Server
 	http     *httptest.Server
 	provider *realtimetest.Server
-	issuer   auth.Issuer
+	issuer   usertoken.Issuer
 	keys     *fakeKeys
 	metrics  *metrics.Metrics
 }
@@ -76,15 +76,15 @@ func newHarness(t *testing.T, opts options) *harness {
 	if opts.idleTimeout == 0 {
 		opts.idleTimeout = time.Minute
 	}
-	privatePEM, jwksJSON, err := auth.GenerateKey("test")
+	privatePEM, jwksJSON, err := usertoken.GenerateKey("test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	jwks, err := auth.ParseJWKS(jwksJSON)
+	jwks, err := usertoken.ParseJWKS(jwksJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifier, err := auth.NewVerifier(jwks, issuer, audience, time.Hour)
+	verifier, err := usertoken.NewVerifier(jwks, issuer, audience, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func newHarness(t *testing.T, opts options) *harness {
 	})
 	return &harness{
 		t: t, gateway: gateway, http: httpServer, provider: provider, keys: keys, metrics: m,
-		issuer: auth.Issuer{Key: signingKey, KeyID: "test", Issuer: issuer, Audience: audience},
+		issuer: usertoken.Issuer{Key: signingKey, KeyID: "test", Issuer: issuer, Audience: audience},
 	}
 }
 
@@ -132,7 +132,7 @@ func writeAndLoadKey(t *testing.T, privatePEM []byte) []byte {
 	if err := writeFile(path, privatePEM); err != nil {
 		t.Fatal(err)
 	}
-	key, err := auth.LoadSigningKey(path)
+	key, err := usertoken.LoadSigningKey(path)
 	if err != nil {
 		t.Fatal(err)
 	}

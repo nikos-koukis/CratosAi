@@ -104,6 +104,17 @@ service OrchestratorService {
   //   PERMISSION_DENIED    ERROR_REASON_APPROVAL_REJECTED (the device refused
   //                        the signature).
   rpc SubmitDeviceApproval(SubmitDeviceApprovalRequest) returns (SubmitDeviceApprovalResponse);
+
+  // ClaimNotifications hands out things to tell users on their phones (push
+  // notifications), oldest first, waiting up to `wait` for new ones. Each is
+  // claimed for a minute: complete it with CompleteNotifications, or it is
+  // handed out again (at most 5 times, and never once it is an hour old).
+  // Several consumers may claim at once; none gets another's notification.
+  rpc ClaimNotifications(ClaimNotificationsRequest) returns (ClaimNotificationsResponse);
+
+  // CompleteNotifications marks claimed notifications as handled (sent, or
+  // dropped because the user has no phone to send them to). Idempotent.
+  rpc CompleteNotifications(CompleteNotificationsRequest) returns (CompleteNotificationsResponse);
 }
 
 // ErrorReason values appear as `google.rpc.ErrorInfo.reason` (by value name).
@@ -507,3 +518,61 @@ message SubmitDeviceApprovalResponse {
   // How long the command ran.
   google.protobuf.Duration duration = 2;
 }
+
+// NotificationKind says why a user should look at their phone.
+enum NotificationKind {
+  // Default value. Never sent.
+  NOTIFICATION_KIND_UNSPECIFIED = 0;
+  // A command on one of the user's computers waits for their approval.
+  NOTIFICATION_KIND_APPROVAL_NEEDED = 1;
+  // A background task waits for the user to confirm an action, and no
+  // conversation is open to ask them.
+  NOTIFICATION_KIND_CONFIRMATION_NEEDED = 2;
+  // A background task ended while no conversation was open to tell them.
+  NOTIFICATION_KIND_TASK_FINISHED = 3;
+}
+
+// Notification is something to tell a user on their phone. It carries no
+// content from the task (goals and results stay in the app, behind the
+// user's sign-in), only what the notification is about.
+message Notification {
+  // Increasing id.
+  int64 notification_id = 1;
+  // Tenant (UUID).
+  string tenant_id = 2;
+  // User.
+  string user_id = 3;
+  // What it is about.
+  NotificationKind kind = 4;
+  // The task concerned.
+  string task_id = 5;
+  // The task's state when the notification was made.
+  TaskState task_state = 6;
+  // When it was made.
+  google.protobuf.Timestamp create_time = 7;
+}
+
+// ClaimNotificationsRequest is the input to ClaimNotifications.
+message ClaimNotificationsRequest {
+  // Who claims (e.g. host and process), for logs; 1 to 128 characters.
+  string consumer = 1;
+  // At most this many, 1 to 100.
+  int32 max = 2;
+  // How long to wait when none is pending, at most 30 s; 0 returns at once.
+  google.protobuf.Duration wait = 3;
+}
+
+// ClaimNotificationsResponse is the output of ClaimNotifications.
+message ClaimNotificationsResponse {
+  // The claimed notifications, oldest first; empty when none came in time.
+  repeated Notification notifications = 1;
+}
+
+// CompleteNotificationsRequest is the input to CompleteNotifications.
+message CompleteNotificationsRequest {
+  // The notifications handled.
+  repeated int64 notification_ids = 1;
+}
+
+// CompleteNotificationsResponse is the output of CompleteNotifications.
+message CompleteNotificationsResponse {}

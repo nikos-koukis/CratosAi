@@ -162,26 +162,76 @@ func (b *broker) notify(id uuid.UUID) {
 	}
 }
 
-// emit queues an event for a conversation's user.
-func (e *Engine) emit(ctx context.Context, conversation uuid.NullUUID, event *orchv1.ConversationEvent, confirmation uuid.NullUUID) {
+// emit queues an event for a conversation's user and reports whether a live
+// conversation got it (so the user hears it now).
+func (e *Engine) emit(ctx context.Context, conversation uuid.NullUUID, event *orchv1.ConversationEvent, confirmation uuid.NullUUID) bool {
 	if !conversation.Valid {
-		return
+		return false
 	}
 	event.CreateTime = timestamppb.Now()
 	payload, err := proto.Marshal(event)
-	target := conversation.UUID
+	target, live := conversation.UUID, false
 	if err == nil {
-		target, err = e.Store.AddEvent(context.WithoutCancel(ctx), conversation.UUID, payload, confirmation)
+		target, live, err = e.Store.AddEvent(context.WithoutCancel(ctx), conversation.UUID, payload, confirmation)
 	}
 	if err != nil {
 		e.Log.Error("cannot queue event", "conversation_id", conversation.UUID, "error", err)
-		return
+		return false
 	}
 	if target != conversation.UUID {
 		e.Log.Info("event sent to the user's current conversation", "from", conversation.UUID, "conversation_id", target)
 	}
 	e.Metrics.Events.Inc()
 	e.broker.notify(target)
+	return live
+}
+
+// notificationsTopic is the broker key that wakes ClaimNotifications.
+var notificationsTopic = uuid.Nil
+
+// notify queues a push notification about a task for its user.
+func (e *Engine) notify(ctx context.Context, t store.Task, kind string) {
+	err := e.Store.AddNotification(context.WithoutCancel(ctx), store.Notification{TenantID: t.TenantID, UserID: t.UserID,
+		Kind: kind, TaskID: t.ID, TaskState: t.State})
+	if err != nil {
+		e.Log.Error("cannot queue notification", "task_id", t.ID, "kind", kind, "error", err)
+		return
+	}
+	e.Metrics.Notifications.WithLabelValues(kind).Inc()
+	e.broker.notify(notificationsTopic)
+}
+
+// Notification limits: a claim lasts a minute; a notification is tried at
+// most five times and never sent once it is an hour old.
+const (
+	notificationLease    = time.Minute
+	notificationAttempts = 5
+	notificationMaxAge   = time.Hour
+)
+
+// ClaimNotifications hands out pending notifications, waiting up to `wait`
+// for new ones.
+func (e *Engine) ClaimNotifications(ctx context.Context, consumer string, max int, wait time.Duration) ([]store.Notification, error) {
+	wake, unsubscribe := e.broker.subscribe(notificationsTopic)
+	defer unsubscribe()
+	deadline := time.Now().Add(wait)
+	for {
+		claimed, err := e.Store.ClaimNotifications(ctx, consumer, max, notificationLease, notificationAttempts,
+			notificationMaxAge)
+		if err != nil || len(claimed) > 0 {
+			return claimed, err
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil
+		case <-wake:
+		case <-time.After(min(remaining, 2*e.opts.PollInterval)): // other instances' notifications
+		}
+	}
 }
 
 // Watch sends a conversation's events after a cursor until the conversation

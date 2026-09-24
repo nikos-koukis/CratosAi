@@ -16,7 +16,7 @@ app ──wss (protobuf frames, PCM16 24 kHz)──▶ gateway ──wss (realti
 ## How a session works
 
 1. The app connects to `wss://…/v1/voice` with `Authorization: Bearer <token>` and subprotocol `jarvis.voice.v1`.
-   - The token is a short-lived EdDSA JWT carrying `sub` (the user) and `tenant_id`.
+   - The token is a short-lived EdDSA JWT carrying `sub` (the user) and `tenant_id`. The [app API](../app-api/) issues it (the session's voice token), signed with the key whose JWKS `GATEWAY_TOKEN_JWKS` names. Verification lives in [`libs/go/usertoken`](../../libs/go/usertoken/).
    - It is checked **before** the WebSocket upgrade. A bad token gets HTTP 401 and triggers no Vault call.
 2. The app sends `StartSession`, naming the provider. It may also give a voice and the user's locale (e.g. `el-GR`).
 3. The gateway fetches that tenant's key from the Vault, opens the provider session and clears the key from its memory.
@@ -124,6 +124,8 @@ say -o /tmp/q.aiff "Hello Jarvis" && afconvert -f WAVE -d LEI16@24000 -c 1 /tmp/
 go run ./cmd/voicectl talk -token "$(go run ./cmd/voicectl token -tenant $TENANT)" -in /tmp/q.wav -out /tmp/reply.wav
 afplay /tmp/reply.wav
 ```
+
+The echo provider finds speech by loudness, as a provider's server VAD does. Speech must be loud for 200 ms before it counts, so clicks and the phone speaker's residual echo do not interrupt the answer. The echo keeps 300 ms before the speech, and the speech ends after a 600 ms pause. `-save DIR` keeps each utterance as a WAV file, to check what an app sends.
 
 **With a real provider:** store your real OpenAI or xAI key the same way, then run `scripts/dev-run.sh` without `ECHO=1`. Use `-provider openai` or `-provider xai` with `voicectl talk`.
 

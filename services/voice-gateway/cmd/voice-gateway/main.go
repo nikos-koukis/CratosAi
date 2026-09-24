@@ -20,8 +20,8 @@ import (
 
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
 	"jarvis.internal/libs/go/mtls"
+	"jarvis.internal/libs/go/usertoken"
 	"jarvis.internal/libs/go/vaultclient"
-	"jarvis.internal/voice-gateway/internal/auth"
 	"jarvis.internal/voice-gateway/internal/config"
 	"jarvis.internal/voice-gateway/internal/metrics"
 	"jarvis.internal/voice-gateway/internal/server"
@@ -50,11 +50,11 @@ func run() int {
 }
 
 func serve(cfg config.Config, logger *slog.Logger) error {
-	keys, err := auth.LoadJWKS(cfg.TokenJWKS)
+	keys, err := usertoken.LoadJWKS(cfg.TokenJWKS)
 	if err != nil {
 		return err
 	}
-	verifier, err := auth.NewVerifier(keys, cfg.TokenIssuer, cfg.TokenAudience, cfg.TokenMaxLifetime)
+	verifier, err := usertoken.NewVerifier(keys, cfg.TokenIssuer, cfg.TokenAudience, cfg.TokenMaxLifetime)
 	if err != nil {
 		return err
 	}

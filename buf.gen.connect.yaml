@@ -1,0 +1,12 @@
+# Connect handlers and clients (Go) for the public app API only; every other
+# service is internal and gRPC only. Run through tools/gen-go.sh.
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: jarvis.internal/gen/go
+plugins:
+  - local: ["go", "tool", "protoc-gen-connect-go"]
+    out: gen/go
+    opt: paths=source_relative

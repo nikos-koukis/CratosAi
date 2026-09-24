@@ -1,0 +1,10 @@
+# Development authorization policy for the app API's internal (admin) side:
+# which mTLS client identity may call which AppAdminService RPC. Anything not
+# listed is denied. The public AppService authenticates users with tokens
+# instead. Production policies are deployed per environment.
+
+# Dashboard backend: issues pairing codes for its signed-in users and
+# manages their app sessions.
+[[principal]]
+id = "spiffe://jarvis.local/dashboard-api"
+allow = ["CreatePairingCode", "ListSessions", "RevokeSession"]

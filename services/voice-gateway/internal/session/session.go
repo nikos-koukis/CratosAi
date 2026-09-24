@@ -34,8 +34,8 @@ import (
 	commonv1 "jarvis.internal/gen/go/jarvis/common/v1"
 	orchv1 "jarvis.internal/gen/go/jarvis/orchestrator/v1"
 	voicev1 "jarvis.internal/gen/go/jarvis/voice/v1"
+	"jarvis.internal/libs/go/usertoken"
 	"jarvis.internal/libs/go/vaultclient"
-	"jarvis.internal/voice-gateway/internal/auth"
 	"jarvis.internal/voice-gateway/internal/metrics"
 	"jarvis.internal/voice-gateway/internal/realtime"
 )
@@ -108,7 +108,7 @@ var (
 
 type session struct {
 	id       string
-	identity auth.Identity
+	identity usertoken.Identity
 	ws       *websocket.Conn
 	cfg      Config
 	deps     Deps
@@ -139,7 +139,7 @@ type session struct {
 
 // Run serves one accepted WebSocket until the session ends. `parent` is
 // cancelled when the gateway shuts down.
-func Run(parent context.Context, ws *websocket.Conn, identity auth.Identity, cfg Config, deps Deps) {
+func Run(parent context.Context, ws *websocket.Conn, identity usertoken.Identity, cfg Config, deps Deps) {
 	if cfg.ToolTimeout <= 0 {
 		cfg.ToolTimeout = 30 * time.Second
 	}
@@ -360,7 +360,7 @@ func (s *session) connect(parent context.Context, kind commonv1.Provider, provid
 
 // safetyIdentifier is a stable pseudonymous user id for provider abuse
 // detection; it does not reveal the tenant or user.
-func safetyIdentifier(identity auth.Identity) string {
+func safetyIdentifier(identity usertoken.Identity) string {
 	sum := sha256.Sum256([]byte("jarvis-voice/v1\x00" + identity.TenantID + "\x00" + identity.UserID))
 	return hex.EncodeToString(sum[:16])
 }

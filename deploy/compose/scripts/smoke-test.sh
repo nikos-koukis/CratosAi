@@ -18,11 +18,12 @@ port() { local value; value=$(setting "$1"); echo "${value:-$2}"; }
 VAULT_DB_PASSWORD=$(setting VAULT_DB_PASSWORD)
 MCP_DB_PASSWORD=$(setting MCP_DB_PASSWORD)
 ORCH_DB_PASSWORD=$(setting ORCH_DB_PASSWORD)
+APP_DB_PASSWORD=$(setting APP_DB_PASSWORD)
 DRAGONFLY_PASSWORD=$(setting DRAGONFLY_PASSWORD)
 NEO4J_PASSWORD=$(setting NEO4J_PASSWORD)
 QDRANT_API_KEY=$(setting QDRANT_API_KEY)
 # Exported so subshells inherit them without putting them in any argv.
-export VAULT_DB_PASSWORD MCP_DB_PASSWORD ORCH_DB_PASSWORD DRAGONFLY_PASSWORD NEO4J_PASSWORD QDRANT_API_KEY
+export VAULT_DB_PASSWORD MCP_DB_PASSWORD ORCH_DB_PASSWORD APP_DB_PASSWORD DRAGONFLY_PASSWORD NEO4J_PASSWORD QDRANT_API_KEY
 QDRANT_HTTP_PORT=$(port JARVIS_QDRANT_HTTP_PORT 56333)
 QDRANT_GRPC_PORT=$(port JARVIS_QDRANT_GRPC_PORT 56334)
 
@@ -59,6 +60,8 @@ expect_refused "mcp_router role cannot open the vault database" psql_as "$MCP_DB
 expect_ok "orchestrator role logs in to its database" psql_as "$ORCH_DB_PASSWORD" orchestrator orchestrator "SELECT 1"
 expect_refused "orchestrator role cannot open the vault database" psql_as "$ORCH_DB_PASSWORD" orchestrator vault "SELECT 1"
 expect_refused "mcp_router role cannot open the orchestrator database" psql_as "$MCP_DB_PASSWORD" mcp_router orchestrator "SELECT 1"
+expect_ok "app_api role logs in to its database" psql_as "$APP_DB_PASSWORD" app_api app "SELECT 1"
+expect_refused "app_api role cannot open the vault database" psql_as "$APP_DB_PASSWORD" app_api vault "SELECT 1"
 
 echo "dragonfly"
 redis_as() { # redis_as <password|""> <command...>

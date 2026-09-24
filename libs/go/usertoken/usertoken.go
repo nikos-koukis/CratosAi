@@ -1,10 +1,12 @@
-// Package auth verifies the access tokens clients present when opening a
-// voice session: short-lived JWTs signed with Ed25519 (alg EdDSA) by the
-// identity service, verified against a JWKS of trusted public keys.
+// Package usertoken issues and verifies the access tokens of end users:
+// short-lived JWTs signed with Ed25519 (alg EdDSA) by the app API, verified
+// against a JWKS of trusted public keys. Each service checks its own audience
+// (e.g. jarvis-voice-gateway, jarvis-app-api).
 //
 // Required claims: iss, aud, sub (user id), tenant_id (UUID), iat, exp, with
-// exp - iat no longer than the configured maximum lifetime.
-package auth
+// exp - iat no longer than the configured maximum lifetime. Tokens issued for
+// an app session also carry sid, the session id.
+package usertoken
 
 import (
 	"crypto/ed25519"
@@ -34,15 +36,19 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 
 // Identity is the authenticated caller.
 type Identity struct {
-	TenantID  string
-	UserID    string
+	TenantID string
+	UserID   string
+	// SessionID is the app session the token was issued for; empty for
+	// tokens not tied to a session (development tooling).
+	SessionID string
 	TokenID   string
 	ExpiresAt time.Time
 }
 
 type claims struct {
 	jwt.RegisteredClaims
-	TenantID string `json:"tenant_id"`
+	TenantID  string `json:"tenant_id"`
+	SessionID string `json:"sid,omitempty"`
 }
 
 // Verifier checks access tokens.
@@ -111,6 +117,7 @@ func (v *Verifier) Verify(token string) (Identity, error) {
 	return Identity{
 		TenantID:  tenant.String(),
 		UserID:    c.Subject,
+		SessionID: c.SessionID,
 		TokenID:   c.ID,
 		ExpiresAt: c.ExpiresAt.Time,
 	}, nil
@@ -178,10 +185,9 @@ func ParseJWKS(data []byte) (map[string]ed25519.PublicKey, error) {
 	return keys, nil
 }
 
-// --- issuing (development tooling and tests) --------------------------------------
+// --- issuing ----------------------------------------------------------------------
 
-// Issuer signs access tokens. Production tokens come from the identity
-// service; this exists for development tooling and tests.
+// Issuer signs access tokens for one audience.
 type Issuer struct {
 	Key      ed25519.PrivateKey
 	KeyID    string
@@ -191,6 +197,11 @@ type Issuer struct {
 
 // Issue signs a token for the user and tenant, valid for ttl.
 func (i Issuer) Issue(userID, tenantID string, ttl time.Duration) (string, error) {
+	return i.IssueForSession(userID, tenantID, "", ttl)
+}
+
+// IssueForSession signs a token tied to an app session (claim sid).
+func (i Issuer) IssueForSession(userID, tenantID, sessionID string, ttl time.Duration) (string, error) {
 	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -201,7 +212,8 @@ func (i Issuer) Issue(userID, tenantID string, ttl time.Duration) (string, error
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
-		TenantID: tenantID,
+		TenantID:  tenantID,
+		SessionID: sessionID,
 	})
 	token.Header["kid"] = i.KeyID
 	return token.SignedString(i.Key)
@@ -223,6 +235,19 @@ func GenerateKey(kid string) (privatePEM []byte, jwksJSON []byte, err error) {
 		X: base64.RawURLEncoding.EncodeToString(public),
 	}}}, "", "  ")
 	return privatePEM, jwksJSON, err
+}
+
+// PublicJWKS is the JWKS of a signing key's public half, as the token
+// issuer publishes it.
+func PublicJWKS(kid string, key ed25519.PrivateKey) ([]byte, error) {
+	public, ok := key.Public().(ed25519.PublicKey)
+	if !ok || kid == "" {
+		return nil, errors.New("an Ed25519 key and a key id are required")
+	}
+	return json.Marshal(jwks{Keys: []jwk{{
+		Kty: "OKP", Crv: "Ed25519", Kid: kid, Use: "sig", Alg: "EdDSA",
+		X: base64.RawURLEncoding.EncodeToString(public),
+	}}})
 }
 
 // LoadSigningKey reads a PKCS#8 PEM Ed25519 private key.

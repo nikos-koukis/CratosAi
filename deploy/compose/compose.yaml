@@ -35,6 +35,7 @@ services:
       VAULT_DB_PASSWORD: ${VAULT_DB_PASSWORD:?missing; run deploy/compose/scripts/init-env.sh}
       MCP_DB_PASSWORD: ${MCP_DB_PASSWORD:?missing; run deploy/compose/scripts/init-env.sh}
       ORCH_DB_PASSWORD: ${ORCH_DB_PASSWORD:?missing; run deploy/compose/scripts/init-env.sh}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?missing; run deploy/compose/scripts/init-env.sh}
     volumes:
       # PostgreSQL 18+ images keep data under /var/lib/postgresql/<major>/.
       - postgres-data:/var/lib/postgresql

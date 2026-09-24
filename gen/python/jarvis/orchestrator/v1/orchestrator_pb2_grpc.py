@@ -139,6 +139,16 @@ class OrchestratorServiceStub:
                 request_serializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.SubmitDeviceApprovalRequest.SerializeToString,
                 response_deserializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.SubmitDeviceApprovalResponse.FromString,
                 _registered_method=True)
+        self.ClaimNotifications = channel.unary_unary(
+                '/jarvis.orchestrator.v1.OrchestratorService/ClaimNotifications',
+                request_serializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.ClaimNotificationsRequest.SerializeToString,
+                response_deserializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.ClaimNotificationsResponse.FromString,
+                _registered_method=True)
+        self.CompleteNotifications = channel.unary_unary(
+                '/jarvis.orchestrator.v1.OrchestratorService/CompleteNotifications',
+                request_serializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.CompleteNotificationsRequest.SerializeToString,
+                response_deserializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.CompleteNotificationsResponse.FromString,
+                _registered_method=True)
 
 
 class OrchestratorServiceServicer:
@@ -298,6 +308,25 @@ class OrchestratorServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ClaimNotifications(self, request, context):
+        """ClaimNotifications hands out things to tell users on their phones (push
+        notifications), oldest first, waiting up to `wait` for new ones. Each is
+        claimed for a minute: complete it with CompleteNotifications, or it is
+        handed out again (at most 5 times, and never once it is an hour old).
+        Several consumers may claim at once; none gets another's notification.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CompleteNotifications(self, request, context):
+        """CompleteNotifications marks claimed notifications as handled (sent, or
+        dropped because the user has no phone to send them to). Idempotent.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_OrchestratorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -370,6 +399,16 @@ def add_OrchestratorServiceServicer_to_server(servicer, server):
                     servicer.SubmitDeviceApproval,
                     request_deserializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.SubmitDeviceApprovalRequest.FromString,
                     response_serializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.SubmitDeviceApprovalResponse.SerializeToString,
+            ),
+            'ClaimNotifications': grpc.unary_unary_rpc_method_handler(
+                    servicer.ClaimNotifications,
+                    request_deserializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.ClaimNotificationsRequest.FromString,
+                    response_serializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.ClaimNotificationsResponse.SerializeToString,
+            ),
+            'CompleteNotifications': grpc.unary_unary_rpc_method_handler(
+                    servicer.CompleteNotifications,
+                    request_deserializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.CompleteNotificationsRequest.FromString,
+                    response_serializer=jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.CompleteNotificationsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -785,6 +824,60 @@ class OrchestratorService:
             '/jarvis.orchestrator.v1.OrchestratorService/SubmitDeviceApproval',
             jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.SubmitDeviceApprovalRequest.SerializeToString,
             jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.SubmitDeviceApprovalResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ClaimNotifications(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/jarvis.orchestrator.v1.OrchestratorService/ClaimNotifications',
+            jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.ClaimNotificationsRequest.SerializeToString,
+            jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.ClaimNotificationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CompleteNotifications(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/jarvis.orchestrator.v1.OrchestratorService/CompleteNotifications',
+            jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.CompleteNotificationsRequest.SerializeToString,
+            jarvis_dot_orchestrator_dot_v1_dot_orchestrator__pb2.CompleteNotificationsResponse.FromString,
             options,
             channel_credentials,
             insecure,

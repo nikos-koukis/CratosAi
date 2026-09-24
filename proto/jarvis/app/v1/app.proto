@@ -1,0 +1,273 @@
+syntax = "proto3";
+
+package jarvis.app.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AppService is the public API of Jarvis's apps: the iPhone app now, the web
+// dashboard later. It is served over HTTPS and speaks the Connect, gRPC and
+// gRPC-Web protocols.
+//
+// Authentication:
+//   1. The app pairs once with a one-time pairing code (RedeemPairingCode),
+//      usually from a QR code or a jarvis://pair link, and gets a Session.
+//   2. Every other RPC needs `Authorization: Bearer <access_token>`.
+//   3. Before the access token expires, the app exchanges the refresh token
+//      for a new Session (RefreshSession). A refresh token works once; reusing
+//      an old one signs the session out, as it means the token was copied.
+//   4. The voice token authenticates the voice gateway's WebSocket.
+//
+// Errors use Connect/gRPC codes with a google.rpc.ErrorInfo detail (domain
+// "app.jarvis", reason an ErrorReason value name) where useful.
+service AppService {
+  // RedeemPairingCode turns a pairing code into a session for this device.
+  //
+  // Errors:
+  //   UNAUTHENTICATED     ERROR_REASON_PAIRING_CODE_INVALID (unknown, used or
+  //                       expired; the cases are not told apart).
+  //   RESOURCE_EXHAUSTED  too many attempts from this address.
+  rpc RedeemPairingCode(RedeemPairingCodeRequest) returns (RedeemPairingCodeResponse);
+
+  // RefreshSession exchanges a refresh token for a new session (new tokens).
+  //
+  // Errors:
+  //   UNAUTHENTICATED     ERROR_REASON_SESSION_ENDED: sign in again.
+  rpc RefreshSession(RefreshSessionRequest) returns (RefreshSessionResponse);
+
+  // SignOut ends the session of a refresh token. Idempotent.
+  rpc SignOut(SignOutRequest) returns (SignOutResponse);
+
+  // ListTasks lists the user's recent background tasks, newest first.
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+
+  // CancelTask stops a task that has not finished. Idempotent.
+  //
+  // Errors:
+  //   NOT_FOUND           ERROR_REASON_TASK_NOT_FOUND.
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+
+  // ListApprovals lists commands on the user's computers that wait for an
+  // approver's signature.
+  rpc ListApprovals(ListApprovalsRequest) returns (ListApprovalsResponse);
+
+  // SubmitApproval delivers the signature of one of the user's approver
+  // devices; the computer verifies it and runs the command.
+  //
+  // Errors:
+  //   NOT_FOUND           ERROR_REASON_APPROVAL_NOT_FOUND (unknown or expired).
+  //   PERMISSION_DENIED   ERROR_REASON_APPROVAL_REJECTED: the computer does not
+  //                       accept this approver or signature.
+  rpc SubmitApproval(SubmitApprovalRequest) returns (SubmitApprovalResponse);
+
+  // RegisterPushToken sets (or, with an empty token, removes) where this
+  // session's push notifications go. Notifications say only what happened
+  // (a command waits for approval, a task finished), never task contents.
+  rpc RegisterPushToken(RegisterPushTokenRequest) returns (RegisterPushTokenResponse);
+}
+
+// ErrorReason values appear as `google.rpc.ErrorInfo.reason` (by value name).
+enum ErrorReason {
+  // Default value. Never sent.
+  ERROR_REASON_UNSPECIFIED = 0;
+  // The pairing code is unknown, already used or expired.
+  ERROR_REASON_PAIRING_CODE_INVALID = 1;
+  // The session ended (signed out, revoked, expired, or its refresh token was
+  // reused); the app must pair again.
+  ERROR_REASON_SESSION_ENDED = 2;
+  // No such task for this user.
+  ERROR_REASON_TASK_NOT_FOUND = 3;
+  // No pending approval with this id for this user.
+  ERROR_REASON_APPROVAL_NOT_FOUND = 4;
+  // The computer rejected the approval (approver or signature).
+  ERROR_REASON_APPROVAL_REJECTED = 5;
+}
+
+// RedeemPairingCodeRequest is the input to RedeemPairingCode.
+message RedeemPairingCodeRequest {
+  // The code, e.g. "7KQ2-M9XD-4TFA". Case, spaces and dashes are ignored.
+  string code = 1 [debug_redact = true];
+  // Name of this device for the user's session list, e.g. "Kostas's iPhone".
+  string device_name = 2;
+  // Device model, e.g. "iPhone17,1".
+  string device_model = 3;
+}
+
+// RedeemPairingCodeResponse is the output of RedeemPairingCode.
+message RedeemPairingCodeResponse {
+  // The new session.
+  Session session = 1;
+}
+
+// Session is what an app needs to act for its user.
+message Session {
+  // Session id (UUID).
+  string session_id = 1;
+  // Tenant (UUID).
+  string tenant_id = 2;
+  // User.
+  string user_id = 3;
+  // For AppService calls.
+  string access_token = 4 [debug_redact = true];
+  // When access_token and voice_token expire.
+  google.protobuf.Timestamp access_token_expire_time = 5;
+  // For the voice gateway's WebSocket.
+  string voice_token = 6 [debug_redact = true];
+  // The voice gateway endpoint, e.g. "wss://voice.example.com/v1/voice".
+  string voice_url = 7;
+  // Single use: exchange it with RefreshSession. Keep it in the device's
+  // keychain.
+  string refresh_token = 8 [debug_redact = true];
+  // When refresh_token expires if unused.
+  google.protobuf.Timestamp refresh_token_expire_time = 9;
+}
+
+// RefreshSessionRequest is the input to RefreshSession.
+message RefreshSessionRequest {
+  // The current refresh token.
+  string refresh_token = 1 [debug_redact = true];
+}
+
+// RefreshSessionResponse is the output of RefreshSession.
+message RefreshSessionResponse {
+  // The session with new tokens.
+  Session session = 1;
+}
+
+// SignOutRequest is the input to SignOut.
+message SignOutRequest {
+  // The current refresh token.
+  string refresh_token = 1 [debug_redact = true];
+}
+
+// SignOutResponse is the output of SignOut.
+message SignOutResponse {}
+
+// TaskState is the lifecycle of a background task.
+enum TaskState {
+  // Default value. Never sent.
+  TASK_STATE_UNSPECIFIED = 0;
+  // Waiting for a worker.
+  TASK_STATE_QUEUED = 1;
+  // Being worked on.
+  TASK_STATE_RUNNING = 2;
+  // Waiting for the user to confirm an action by voice.
+  TASK_STATE_AWAITING_CONFIRMATION = 3;
+  // Waiting for an approver's signature (see ListApprovals).
+  TASK_STATE_AWAITING_APPROVAL = 4;
+  // Done; `result` has the answer.
+  TASK_STATE_SUCCEEDED = 5;
+  // Could not finish; `result` says why.
+  TASK_STATE_FAILED = 6;
+  // Cancelled by the user.
+  TASK_STATE_CANCELLED = 7;
+}
+
+// Task is a background task.
+message Task {
+  // Id (UUID).
+  string task_id = 1;
+  // What the user asked for.
+  string goal = 2;
+  // Current state.
+  TaskState state = 3;
+  // The answer (SUCCEEDED) or the reason (FAILED, CANCELLED).
+  string result = 4;
+  // Steps taken so far.
+  int32 steps = 5;
+  // When it was created.
+  google.protobuf.Timestamp create_time = 6;
+  // When it last changed.
+  google.protobuf.Timestamp update_time = 7;
+  // Set while AWAITING_APPROVAL.
+  Approval pending_approval = 8;
+}
+
+// Approval is a command on one of the user's computers that waits for an
+// approver's signature.
+message Approval {
+  // The computer's approval id.
+  string approval_id = 1;
+  // The task waiting for it.
+  string task_id = 2;
+  // What the user asked the task to do.
+  string task_goal = 3;
+  // Name of the computer that will run the command.
+  string device_name = 4;
+  // Serialized jarvis.device.v1.ApprovalPayload exactly as the computer sent
+  // it. Approvers show the command from these bytes (never from another
+  // description) and sign exactly them: ECDSA P-256 with SHA-256 over
+  // "jarvis.device.v1.ApprovalPayload\0" followed by these bytes.
+  bytes payload = 5;
+  // After this time the approval can no longer be used.
+  google.protobuf.Timestamp expire_time = 6;
+}
+
+// ListTasksRequest is the input to ListTasks.
+message ListTasksRequest {
+  // At most this many, 1 to 100; 0 means 20.
+  int32 limit = 1;
+}
+
+// ListTasksResponse is the output of ListTasks.
+message ListTasksResponse {
+  // Newest first.
+  repeated Task tasks = 1;
+}
+
+// CancelTaskRequest is the input to CancelTask.
+message CancelTaskRequest {
+  // The task.
+  string task_id = 1;
+}
+
+// CancelTaskResponse is the output of CancelTask.
+message CancelTaskResponse {
+  // The task after cancelling.
+  Task task = 1;
+}
+
+// ListApprovalsRequest is the input to ListApprovals.
+message ListApprovalsRequest {}
+
+// ListApprovalsResponse is the output of ListApprovals.
+message ListApprovalsResponse {
+  // Soonest to expire first.
+  repeated Approval approvals = 1;
+}
+
+// SubmitApprovalRequest is the input to SubmitApproval.
+message SubmitApprovalRequest {
+  // The approval.
+  string approval_id = 1;
+  // The approver id configured on the computer for the signing key.
+  string approver_id = 2;
+  // Raw 64-byte r||s ECDSA P-256 signature (see Approval.payload).
+  bytes signature = 3;
+}
+
+// PushEnvironment is the APNs environment a device token belongs to.
+enum PushEnvironment {
+  // Default value. Never valid.
+  PUSH_ENVIRONMENT_UNSPECIFIED = 0;
+  // Development builds (Xcode).
+  PUSH_ENVIRONMENT_SANDBOX = 1;
+  // TestFlight and App Store builds.
+  PUSH_ENVIRONMENT_PRODUCTION = 2;
+}
+
+// RegisterPushTokenRequest is the input to RegisterPushToken.
+message RegisterPushTokenRequest {
+  // The APNs device token in hex; empty removes this session's token.
+  string device_token = 1 [debug_redact = true];
+  // Where the token is valid.
+  PushEnvironment environment = 2;
+}
+
+// RegisterPushTokenResponse is the output of RegisterPushToken.
+message RegisterPushTokenResponse {}
+
+// SubmitApprovalResponse is the output of SubmitApproval.
+message SubmitApprovalResponse {
+  // The command's result as JSON (exit code, output), as the task sees it.
+  string output = 1;
+}

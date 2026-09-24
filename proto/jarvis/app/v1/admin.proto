@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package jarvis.app.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AppAdminService is the app API's internal side, over gRPC with mutual TLS:
+// the dashboard backend issues pairing codes for its signed-in users and
+// manages their app sessions (e.g. signs out a lost phone).
+service AppAdminService {
+  // CreatePairingCode issues a one-time code that pairs one app with the
+  // user. It is valid for 10 minutes.
+  rpc CreatePairingCode(CreatePairingCodeRequest) returns (CreatePairingCodeResponse);
+
+  // ListSessions lists the user's active app sessions.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+  // RevokeSession signs a session out. Access tokens already issued stop
+  // working for the app API at once and expire within 15 minutes elsewhere.
+  // Idempotent.
+  rpc RevokeSession(RevokeSessionRequest) returns (RevokeSessionResponse);
+}
+
+// CreatePairingCodeRequest is the input to CreatePairingCode.
+message CreatePairingCodeRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User, 1 to 128 printable ASCII characters.
+  string user_id = 2;
+}
+
+// CreatePairingCodeResponse is the output of CreatePairingCode.
+message CreatePairingCodeResponse {
+  // The code to type into the app, e.g. "7KQ2-M9XD-4TFA".
+  string code = 1 [debug_redact = true];
+  // A jarvis://pair link with the app API's address and the code, for a QR
+  // code: scanning it with the phone's camera opens the app and pairs it.
+  string pairing_url = 2 [debug_redact = true];
+  // When the code stops working.
+  google.protobuf.Timestamp expire_time = 3;
+}
+
+// ListSessionsRequest is the input to ListSessions.
+message ListSessionsRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+}
+
+// ListSessionsResponse is the output of ListSessions.
+message ListSessionsResponse {
+  // Most recently used first.
+  repeated AppSession sessions = 1;
+}
+
+// AppSession is a paired app.
+message AppSession {
+  // Session id (UUID).
+  string session_id = 1;
+  // Device name given when pairing.
+  string device_name = 2;
+  // Device model given when pairing.
+  string device_model = 3;
+  // When it was paired.
+  google.protobuf.Timestamp create_time = 4;
+  // When it last refreshed its tokens.
+  google.protobuf.Timestamp last_use_time = 5;
+}
+
+// RevokeSessionRequest is the input to RevokeSession.
+message RevokeSessionRequest {
+  // Tenant (UUID).
+  string tenant_id = 1;
+  // User.
+  string user_id = 2;
+  // The session.
+  string session_id = 3;
+}
+
+// RevokeSessionResponse is the output of RevokeSession.
+message RevokeSessionResponse {}

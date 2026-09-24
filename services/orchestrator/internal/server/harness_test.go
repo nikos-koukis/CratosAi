@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -239,7 +240,7 @@ func (f *fakeDevice) ExecuteCommand(_ context.Context, in *devicev1.ExecuteComma
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.commands = append(f.commands, in)
-	if in.GetProgram() == "/usr/bin/git" || in.GetApproval().GetApprovalId() == "appr-1" {
+	if in.GetProgram() == "/usr/bin/git" || strings.HasPrefix(in.GetApproval().GetApprovalId(), "appr-") {
 		if in.GetApproval() != nil && in.GetApproval().GetApproverId() != "my-iphone" {
 			return nil, status.Error(codes.PermissionDenied, "the approval signature is invalid")
 		}
@@ -247,7 +248,8 @@ func (f *fakeDevice) ExecuteCommand(_ context.Context, in *devicev1.ExecuteComma
 			ExitCode: 0, Stdout: []byte("ran " + in.GetProgram())}}}, nil
 	}
 	return &devicev1.ExecuteCommandResponse{Outcome: &devicev1.ExecuteCommandResponse_ApprovalRequired{
-		ApprovalRequired: &devicev1.ApprovalRequired{ApprovalId: "appr-1", Payload: []byte("payload")}}}, nil
+		// Approval ids are global (a primary key): unique per request, as on a real device.
+		ApprovalRequired: &devicev1.ApprovalRequired{ApprovalId: "appr-" + uuid.NewString(), Payload: []byte("payload")}}}, nil
 }
 
 type fakeDevices struct{ device *fakeDevice }

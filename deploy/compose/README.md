@@ -4,7 +4,7 @@ Docker Compose stack with the stateful services Jarvis depends on. It is for loc
 
 | Service | Image | Used for | Host address (127.0.0.1 only) |
 |---|---|---|---|
-| PostgreSQL | `postgres:18.6-alpine` | Relational state: databases `vault`, `mcp` (MCP router), `orchestrator` | `127.0.0.1:55432` |
+| PostgreSQL | `postgres:18.6-alpine` | Relational state: databases `vault`, `mcp` (MCP router), `orchestrator`, `app` (app API) | `127.0.0.1:55432` |
 | DragonflyDB | `dragonfly:v1.40.2` | Redis-compatible cache: rate limits, sessions | `127.0.0.1:56379` |
 | Neo4j | `neo4j:2026.09.0-community` | Knowledge graph (GraphRAG) | Browser `http://127.0.0.1:57474`, Bolt `127.0.0.1:57687` |
 | Qdrant | `qdrant/qdrant:v1.19.1` | Vector search | HTTP `127.0.0.1:56333`, gRPC `127.0.0.1:56334` |
@@ -28,7 +28,7 @@ pnpm nx run infra:reset   # stop and DELETE all data
 - **Localhost only.** Every port is published on `127.0.0.1`, so nothing is reachable from the network.
 - **PostgreSQL:**
   - Every TCP connection needs a password (`scram-sha-256`), including connections from inside the container.
-  - Each service gets its own role and database (`vault`, `mcp_router`, `orchestrator`). A role owns only its database and cannot connect to the others or to `postgres`.
+  - Each service gets its own role and database (`vault`, `mcp_router`, `orchestrator`, `app_api`). A role owns only its database and cannot connect to the others or to `postgres`.
   - The superuser is only for administration.
 - **Dragonfly** requires a password. **Qdrant** requires an API key. **Neo4j** requires authentication, and its usage reporting is off, as is Qdrant's telemetry.
 - **Container hardening:** `no-new-privileges` on every container, rotated logs, and memory caps (Neo4j heap 512 MiB, Dragonfly 512 MiB).

@@ -325,6 +325,7 @@ func (e *Engine) awaitApproval(ctx context.Context, c caller, p *pause) (string,
 	if err := e.saveApproval(ctx, t.ID, "", p); err != nil {
 		return failure("could not queue the command")
 	}
+	e.notify(ctx, t, store.NotifyApproval)
 	return output(map[string]string{"status": "waiting_for_approval", "task_id": t.ID.String(),
 		"note": "The command needs the user's approval on their phone; its result will be reported when it runs."}), false
 }
@@ -349,6 +350,33 @@ func approvalExpiry(req *devicev1.ApprovalRequired) time.Time {
 		return expiry.AsTime()
 	}
 	return time.Now().Add(5 * time.Minute)
+}
+
+// dropApproval ends an approval that can no longer be used (rejected by the
+// device, or expired): the command did not run. A command task fails; an
+// agent task gets the failure as the tool's result and continues.
+func (e *Engine) dropApproval(ctx context.Context, a store.DeviceApproval, why string) {
+	if err := e.Store.DeleteApproval(ctx, a.ApprovalID); err != nil {
+		e.Log.Error("cannot delete a spent approval", "approval_id", a.ApprovalID, "error", err)
+	}
+	t, err := e.Store.ResumeTask(ctx, a.TaskID, func(t *store.Task) error {
+		if t.Kind == store.KindCommand {
+			t.State, t.Result = store.TaskFailed, why
+			return nil
+		}
+		return completePending(t, a.CallID, output(map[string]string{"error": why}))
+	})
+	if err != nil {
+		e.Log.Warn("cannot resume the task of a spent approval", "task_id", a.TaskID, "error", err)
+		return
+	}
+	e.Log.Info("approval spent without running the command", "approval_id", a.ApprovalID, "task_id", a.TaskID)
+	if t.Kind == store.KindCommand {
+		e.Metrics.Tasks.WithLabelValues(store.TaskFailed).Inc()
+		e.finished(ctx, t)
+		return
+	}
+	e.signal()
 }
 
 // ErrApprovalNotFound and ErrApprovalRejected are SubmitDeviceApproval failures.
@@ -380,11 +408,16 @@ func (e *Engine) SubmitApproval(ctx context.Context, tenant, user, approvalID, a
 		&devicev1.Approval{ApprovalId: approvalID, ApproverId: approverID, Signature: signature})
 	if err != nil {
 		if st := status.Convert(err); st.Code() == codes.PermissionDenied || st.Code() == codes.FailedPrecondition {
+			// The device allows one attempt per approval: this one is spent.
+			e.dropApproval(context.WithoutCancel(ctx), a, "The computer rejected the approval ("+
+				truncate(st.Message(), 200)+"), so the command did not run. The user's phone may not be one of its "+
+				"approvers; ask again once that is fixed.")
 			return "", fmt.Errorf("%w: %s", ErrApprovalRejected, truncate(st.Message(), 300))
 		}
 		return "", err
 	}
 	if resp.GetResult() == nil {
+		e.dropApproval(context.WithoutCancel(ctx), a, "The computer asked for another approval; the command did not run.")
 		return "", fmt.Errorf("%w: the device asked for approval again", ErrApprovalRejected)
 	}
 	out, _ := commandOutput(resp.GetResult())
@@ -415,15 +448,20 @@ func mustJSON(v any) json.RawMessage {
 	return data
 }
 
+var taskStates = map[string]orchv1.TaskState{
+	store.TaskQueued: orchv1.TaskState_TASK_STATE_QUEUED, store.TaskRunning: orchv1.TaskState_TASK_STATE_RUNNING,
+	store.TaskAwaitingConfirmation: orchv1.TaskState_TASK_STATE_AWAITING_CONFIRMATION,
+	store.TaskAwaitingApproval:     orchv1.TaskState_TASK_STATE_AWAITING_APPROVAL,
+	store.TaskSucceeded:            orchv1.TaskState_TASK_STATE_SUCCEEDED, store.TaskFailed: orchv1.TaskState_TASK_STATE_FAILED,
+	store.TaskCancelled: orchv1.TaskState_TASK_STATE_CANCELLED,
+}
+
+// TaskStateProto renders a stored task state for the API.
+func TaskStateProto(state string) orchv1.TaskState { return taskStates[state] }
+
 // TaskProto renders a task for the API.
 func TaskProto(t store.Task) *orchv1.Task {
-	states := map[string]orchv1.TaskState{
-		store.TaskQueued: orchv1.TaskState_TASK_STATE_QUEUED, store.TaskRunning: orchv1.TaskState_TASK_STATE_RUNNING,
-		store.TaskAwaitingConfirmation: orchv1.TaskState_TASK_STATE_AWAITING_CONFIRMATION,
-		store.TaskAwaitingApproval:     orchv1.TaskState_TASK_STATE_AWAITING_APPROVAL,
-		store.TaskSucceeded:            orchv1.TaskState_TASK_STATE_SUCCEEDED, store.TaskFailed: orchv1.TaskState_TASK_STATE_FAILED,
-		store.TaskCancelled: orchv1.TaskState_TASK_STATE_CANCELLED,
-	}
+	states := taskStates
 	conversation := ""
 	if t.ConversationID.Valid {
 		conversation = t.ConversationID.UUID.String()

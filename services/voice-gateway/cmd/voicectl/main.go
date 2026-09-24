@@ -17,7 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"jarvis.internal/voice-gateway/internal/auth"
+	"jarvis.internal/libs/go/usertoken"
 )
 
 const usage = `usage: voicectl <command> [flags]
@@ -62,7 +62,7 @@ func keygen(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	privatePEM, jwks, err := auth.GenerateKey(*kid)
+	privatePEM, jwks, err := usertoken.GenerateKey(*kid)
 	if err != nil {
 		return err
 	}
@@ -104,11 +104,11 @@ func token(args []string) error {
 	if _, err := uuid.Parse(*tenant); err != nil {
 		return errors.New("-tenant must be a UUID")
 	}
-	key, err := auth.LoadSigningKey(*keyPath)
+	key, err := usertoken.LoadSigningKey(*keyPath)
 	if err != nil {
 		return err
 	}
-	signed, err := auth.Issuer{Key: key, KeyID: *kid, Issuer: *issuer, Audience: *audience}.
+	signed, err := usertoken.Issuer{Key: key, KeyID: *kid, Issuer: *issuer, Audience: *audience}.
 		Issue(strings.TrimSpace(*user), *tenant, *ttl)
 	if err != nil {
 		return err

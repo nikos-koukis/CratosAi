@@ -1,0 +1,38 @@
+# XcodeGen spec for the iPhone app: `xcodegen generate` (or
+# `pnpm nx run ios:project`) writes Jarvis.xcodeproj, which is not committed.
+name: Jarvis
+options:
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  # The Xcode whose recommended settings the project has (LastUpgradeCheck).
+  xcodeVersion: "27.0"
+packages:
+  JarvisKit:
+    path: JarvisKit
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+targets:
+  Jarvis:
+    type: application
+    platform: iOS
+    sources:
+      - path: Jarvis
+    dependencies:
+      - package: JarvisKit
+        product: JarvisUI
+    settings:
+      base:
+        INFOPLIST_FILE: Jarvis/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Jarvis/Jarvis.entitlements
+schemes:
+  Jarvis:
+    build:
+      targets:
+        Jarvis: all
+    run:
+      config: Debug
+    archive:
+      config: Release

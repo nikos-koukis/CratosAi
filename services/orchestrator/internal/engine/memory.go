@@ -132,6 +132,7 @@ func (e *Engine) maintenance(ctx context.Context) {
 		case <-ticker.C:
 		}
 		e.closeAbandoned(ctx)
+		e.expireApprovals(ctx)
 		expired, err := e.Store.ExpireConfirmations(ctx)
 		if err != nil && ctx.Err() == nil {
 			e.Log.Error("cannot expire confirmations", "error", err)
@@ -150,6 +151,9 @@ func (e *Engine) maintenance(ctx context.Context) {
 			e.signal()
 		}
 		if time.Since(lastPurge) > time.Hour {
+			if _, err := e.Store.PurgeNotifications(ctx, 24*time.Hour); err != nil {
+				e.Log.Error("cannot purge notifications", "error", err)
+			}
 			if n, err := e.Store.PurgeTranscripts(ctx, e.opts.TranscriptRetention); err != nil {
 				e.Log.Error("cannot purge transcripts", "error", err)
 			} else if n > 0 {
@@ -177,5 +181,19 @@ func (e *Engine) closeAbandoned(ctx context.Context) {
 			continue
 		}
 		e.Log.Warn("closed an abandoned conversation", "conversation_id", id)
+	}
+}
+
+// expireApprovals ends device approvals nobody signed in time.
+func (e *Engine) expireApprovals(ctx context.Context) {
+	expired, err := e.Store.ExpireApprovals(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			e.Log.Error("cannot expire device approvals", "error", err)
+		}
+		return
+	}
+	for _, a := range expired {
+		e.dropApproval(ctx, a, "Nobody approved the command in time, so it did not run.")
 	}
 }

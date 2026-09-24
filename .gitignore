@@ -36,3 +36,13 @@ dist/
 
 # Local development state (dev certificates etc.)
 .dev/
+
+# Swift / Xcode
+.build/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+
+# Per-developer Xcode settings (team, bundle id)
+apps/ios/Config/Local.xcconfig

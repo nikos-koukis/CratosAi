@@ -27,3 +27,17 @@ allow = [
   "RemoveDevice",
   "SubmitDeviceApproval",
 ]
+
+# App API: the iPhone app's tasks and approvals, for its signed-in user, and
+# the push notifications it sends to users' phones.
+[[principal]]
+id = "spiffe://jarvis.local/app-api"
+allow = [
+  "GetTask",
+  "ListTasks",
+  "CancelTask",
+  "ListDevices",
+  "SubmitDeviceApproval",
+  "ClaimNotifications",
+  "CompleteNotifications",
+]

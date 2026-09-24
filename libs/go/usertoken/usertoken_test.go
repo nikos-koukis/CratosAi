@@ -1,4 +1,4 @@
-package auth
+package usertoken
 
 import (
 	"crypto/ed25519"
@@ -139,5 +139,33 @@ func TestJWKSValidation(t *testing.T) {
 		if _, err := ParseJWKS([]byte(doc)); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+func TestPublishedJWKSVerifiesIssuedTokens(t *testing.T) {
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := PublicJWKS("k9", private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := ParseJWKS(published)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier, err := NewVerifier(keys, issuer, audience, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := Issuer{Key: private, KeyID: "k9", Issuer: issuer, Audience: audience}.
+		IssueForSession("u1", tenant, "0199a1b2-0000-7000-8000-000000000001", 10*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := verifier.Verify(token)
+	if err != nil || identity.SessionID != "0199a1b2-0000-7000-8000-000000000001" || identity.UserID != "u1" {
+		t.Fatalf("identity = %+v, %v", identity, err)
 	}
 }

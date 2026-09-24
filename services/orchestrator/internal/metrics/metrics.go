@@ -20,6 +20,7 @@ type Metrics struct {
 	AgentSeconds  *prometheus.HistogramVec
 	MemoryJobs    *prometheus.CounterVec
 	Events        prometheus.Counter
+	Notifications *prometheus.CounterVec
 }
 
 // New registers every metric on a fresh registry.
@@ -55,8 +56,11 @@ func New() *Metrics {
 		Events: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "orchestrator_events_total", Help: "Events queued for conversations.",
 		}),
+		Notifications: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "orchestrator_notifications_total", Help: "Push notifications queued for users, by kind.",
+		}, []string{"kind"}),
 	}
 	m.Registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-		m.RPCs, m.ToolCalls, m.ToolSeconds, m.Confirmations, m.Tasks, m.TaskSteps, m.AgentSeconds, m.MemoryJobs, m.Events)
+		m.RPCs, m.ToolCalls, m.ToolSeconds, m.Confirmations, m.Tasks, m.TaskSteps, m.AgentSeconds, m.MemoryJobs, m.Events, m.Notifications)
 	return m
 }

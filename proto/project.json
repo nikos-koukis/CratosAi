@@ -22,10 +22,14 @@
         "{workspaceRoot}/tools/go/go.mod",
         "{workspaceRoot}/gen/python/**/*",
         "{workspaceRoot}/gen/python/pyproject.toml",
-        "{workspaceRoot}/uv.lock"
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/buf.gen.connect.yaml",
+        "{workspaceRoot}/gen/swift/Sources/**/*",
+        "{workspaceRoot}/buf.gen.swift.yaml",
+        "{workspaceRoot}/tools/swift/Package.swift"
       ],
       "options": {
-        "command": "buf lint && tools/check-generated-go.sh && tools/check-generated-python.sh"
+        "command": "buf lint && tools/check-generated-go.sh && tools/check-generated-python.sh && tools/check-generated-swift.sh"
       }
     },
     "format-check": {
@@ -62,7 +66,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "rm -rf gen/go/jarvis && buf generate && (cd gen/go && go mod tidy) && tools/gen-python.sh"
+        "command": "rm -rf gen/go/jarvis && tools/gen-go.sh && (cd gen/go && go mod tidy) && tools/gen-python.sh && tools/gen-swift.sh"
       }
     }
   }

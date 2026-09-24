@@ -3,13 +3,15 @@
 Point AGENT_OPENAI_BASE_URL (or AGENT_XAI_BASE_URL) at it to run background
 tasks and memory extraction end to end without spending API credits:
 
-    jarvis-fake-llm --key sk-dev-... [--tool NAME --tool-args JSON]
+    jarvis-fake-llm --key sk-dev-... [--tool NAME --tool-args JSON] [--delay SECONDS]
 
 - Tasks: the first decision calls --tool (when the task offers it), the next
   one answers with a summary of the tool's result. Without --tool it answers
   at once.
 - Memory extraction: every user line of the transcript becomes a passage
   about the User.
+- --delay makes every task decision take that long, e.g. so a task finishes
+  after the conversation that started it has ended.
 
 It accepts only requests carrying --key (the key stored in the Vault for the
 test tenant), so it also proves that the tenant's key reaches the provider.
@@ -153,6 +155,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._reply(HTTPStatus.BAD_REQUEST, {"error": {"type": "invalid_request_error", "message": "bad json"}})
             return
         structured = (body.get("text") or {}).get("format", {}).get("type") == "json_schema"
+        if not structured and self.server.delay > 0:
+            time.sleep(self.server.delay)
         output = extract(body) if structured else decide(body, self.server.tool, self.server.tool_args)
         kind = "extraction" if structured else "decision"
         log.info("%s for model %s: %s", kind, body.get("model"), ", ".join(o["type"] for o in output))
@@ -162,9 +166,9 @@ class _Handler(BaseHTTPRequestHandler):
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], key: str, tool: str, tool_args: str) -> None:
+    def __init__(self, address: tuple[str, int], key: str, tool: str, tool_args: str, delay: float = 0) -> None:
         super().__init__(address, _Handler)
-        self.key, self.tool, self.tool_args = key, tool, tool_args
+        self.key, self.tool, self.tool_args, self.delay = key, tool, tool_args, delay
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -173,6 +177,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--key", required=True, help="the API key it accepts (the test tenant's key in the Vault)")
     parser.add_argument("--tool", default="", help="tool a task calls first, e.g. an MCP tool name")
     parser.add_argument("--tool-args", default="{}", help="its arguments, a JSON object")
+    parser.add_argument("--delay", type=float, default=0, help="seconds each task decision takes (default 0)")
     args = parser.parse_args(argv)
     host, _, port = args.listen.rpartition(":")
     try:
@@ -188,7 +193,7 @@ def main(argv: list[str] | None = None) -> None:
     if not isinstance(tool_args, dict):
         parser.error("--tool-args must be a JSON object")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr)
-    server = _Server((host, int(port)), args.key, args.tool, args.tool_args)
+    server = _Server((host, int(port)), args.key, args.tool, args.tool_args, max(0.0, args.delay))
     log.info("fake Responses API at http://%s/v1 (tool: %s)", args.listen, args.tool or "none")
     try:
         server.serve_forever()

@@ -1,0 +1,62 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "ios",
+  "projectType": "application",
+  "sourceRoot": "apps/ios",
+  "tags": ["type:app", "lang:swift"],
+  "implicitDependencies": ["proto"],
+  "namedInputs": {
+    "swift": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/**/.build/**/*",
+      "!{projectRoot}/Jarvis.xcodeproj/**/*",
+      "{workspaceRoot}/gen/swift/**/*",
+      "!{workspaceRoot}/gen/swift/.build/**/*"
+    ]
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": ["swift"],
+      "options": { "command": "swift build", "cwd": "apps/ios/JarvisKit" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": ["swift"],
+      "options": { "command": "scripts/swift-test.sh", "cwd": "apps/ios" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["swift"],
+      "options": {
+        "command": "swift format lint --strict --recursive --configuration .swift-format JarvisKit/Sources JarvisKit/Tests Jarvis && bash -n scripts/*.sh",
+        "cwd": "apps/ios"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "inputs": ["swift"],
+      "options": {
+        "command": "swift format lint --recursive --configuration .swift-format JarvisKit/Sources JarvisKit/Tests Jarvis",
+        "cwd": "apps/ios"
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "swift format format --in-place --recursive --configuration .swift-format JarvisKit/Sources JarvisKit/Tests Jarvis",
+        "cwd": "apps/ios"
+      }
+    },
+    "project": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "xcodegen generate", "cwd": "apps/ios" }
+    },
+    "build-app": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "scripts/build-app.sh", "cwd": "apps/ios" }
+    }
+  }
+}

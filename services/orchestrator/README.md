@@ -18,6 +18,7 @@ The Go engine owns every piece of state. The [agent sidecar](../agent/) is state
 |---|---|
 | voice gateway (`spiffe://jarvis.local/voice-gateway`) | `OpenConversation`, `RecordTurn`, `CallTool`, `AckToolOutput`, `WatchConversation`, `AckEvent`, `CloseConversation` |
 | dashboard (`spiffe://jarvis.local/dashboard-api`) | `GetTask`, `ListTasks`, `CancelTask`, `RegisterDevice`, `ListDevices`, `RemoveDevice`, `SubmitDeviceApproval` |
+| app API (`spiffe://jarvis.local/app-api`) | `GetTask`, `ListTasks`, `CancelTask`, `ListDevices`, `SubmitDeviceApproval` for the signed-in user of the iPhone app; `ClaimNotifications`, `CompleteNotifications` for push notifications |
 
 ## A voice conversation
 
@@ -73,6 +74,20 @@ Anything that changes something outside Jarvis needs the user's spoken consent. 
   - If that conversation has ended, the event goes to the user's current conversation, together with any confirmation it asks about.
   - If the user has no conversation open, it waits and is told when they next start one, for up to 24 hours. After that it stays visible in `ListTasks`.
 
+## Push notifications
+
+Some things should reach the phone even when nobody is talking to Jarvis. The orchestrator queues them in an outbox (`notifications`), and the [app API](../app-api/) sends them through APNs:
+
+| Kind | When |
+|---|---|
+| `APPROVAL_NEEDED` | always, when a command waits for an approver's signature |
+| `CONFIRMATION_NEEDED` | a task waits for a spoken confirmation and no conversation is live to ask |
+| `TASK_FINISHED` | a task succeeded or failed and no conversation is live to tell (not for tasks the user cancelled) |
+
+- **Claiming.** `ClaimNotifications` hands them out with a one-minute lease, using a long poll that wakes at once on a new notification. Several consumers never get the same one.
+- **Retries.** Unfinished ones are handed out again, up to 5 times and never after an hour. They are deleted after a day.
+- **Content.** A notification carries only the kind, the task id and state, never the task's goal or result.
+
 ## Memory
 
 - **When a conversation closes**, a memory job extracts entities, relations and passages from its transcript and stores them in the knowledge service as source `conversation:<id>`. The sidecar does the extraction.
@@ -92,7 +107,8 @@ Anything that changes something outside Jarvis needs the user's spoken consent. 
   - the approval id,
   - the device's `ApprovalPayload` bytes,
   - the expiry.
-- **An approver device signs exactly those bytes.** For development, use `jarvis-approve` from the daemon; in production, the iOS app with the key in the Secure Enclave. `SubmitDeviceApproval` delivers the signature, the daemon verifies it and runs the command, and the task continues.
+- **An approver device signs exactly those bytes.** In production that is the [iPhone app](../../apps/ios/), with the key in the Secure Enclave and Face ID; for development, use `jarvis-approve` from the daemon or `jarvis-cli`. `SubmitDeviceApproval` delivers the signature, the daemon verifies it and runs the command, and the task continues.
+- **A spent or expired approval ends the wait.** The daemon allows one attempt per approval, so a signature it rejects spends it. An approval nobody signs expires. Either way the command did not run: a command task fails with the reason, and an agent task gets it as the tool's result.
 
 ## Configuration
 

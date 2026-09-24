@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,13 +20,8 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	silenceAmplitude = 500 // |sample| below this counts as silence
-	endOfSpeech      = 600 * time.Millisecond
-)
-
 // echoProvider is a local stand-in for OpenAI/xAI that speaks the same
-// realtime protocol: it detects speech by loudness and plays it back, so the
+// realtime protocol: it detects speech by loudness (vad) and plays it back, so the
 // whole pipeline (app → gateway → vault → provider) can be exercised without
 // paying for an LLM. Point GATEWAY_OPENAI_URL at it.
 //
@@ -44,6 +40,7 @@ func echoProvider(args []string) error {
 	tool := flags.String("tool", "", "tool to call after each utterance, e.g. recall_memory (needs the orchestrator)")
 	toolArgs := flags.String("tool-args", "{}", "arguments of -tool, a JSON object")
 	confirmEarly := flags.Bool("confirm-early", false, "also try to confirm before the user answers (must be refused)")
+	save := flags.String("save", "", "directory to save each utterance in, as a WAV file (to check what the app sends)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -52,6 +49,11 @@ func echoProvider(args []string) error {
 	}
 	if !json.Valid([]byte(*toolArgs)) {
 		return fmt.Errorf("-tool-args must be a JSON object")
+	}
+	if *save != "" {
+		if err := os.MkdirAll(*save, 0o700); err != nil {
+			return err
+		}
 	}
 	host, _, err := net.SplitHostPort(*listen)
 	if err != nil || !net.ParseIP(host).IsLoopback() {
@@ -70,7 +72,7 @@ func echoProvider(args []string) error {
 		}
 		ws.SetReadLimit(8 << 20)
 		log.Info("session opened")
-		e := &echo{ws: ws, log: log, tool: *tool, toolArgs: *toolArgs, confirmEarly: *confirmEarly}
+		e := &echo{ws: ws, log: log, tool: *tool, toolArgs: *toolArgs, confirmEarly: *confirmEarly, save: *save}
 		e.run(r.Context())
 		log.Info("session closed")
 	})
@@ -86,6 +88,7 @@ type echo struct {
 	tool         string
 	toolArgs     string
 	confirmEarly bool
+	save         string
 
 	toolDeclared bool
 	confirmation string // a confirmation the last results asked for
@@ -123,8 +126,7 @@ func (e *echo) run(ctx context.Context) {
 	if e.send(ctx, map[string]any{"type": "session.created"}) != nil {
 		return
 	}
-	var silentFor time.Duration
-	speaking := false
+	var speech vad
 	for {
 		_, data, err := e.ws.Read(ctx)
 		if err != nil {
@@ -183,21 +185,12 @@ func (e *echo) run(ctx context.Context) {
 			if err != nil {
 				continue
 			}
-			loud := isLoud(pcm)
-			switch {
-			case loud && !speaking:
-				speaking, silentFor, e.recording = true, 0, nil
+			started, ended := speech.push(pcm)
+			if started {
 				_ = e.send(ctx, map[string]any{"type": "input_audio_buffer.speech_started", "item_id": "item_" + uuid.NewString()[:8]})
-			case !loud && speaking:
-				silentFor += time.Duration(len(pcm)/48) * time.Millisecond
-			case loud:
-				silentFor = 0
 			}
-			if speaking {
-				e.recording = append(e.recording, pcm...)
-			}
-			if speaking && silentFor >= endOfSpeech {
-				speaking = false
+			if ended {
+				e.recording = speech.recording
 				if err := e.endOfTurn(ctx); err != nil {
 					return
 				}
@@ -210,6 +203,14 @@ func (e *echo) run(ctx context.Context) {
 // otherwise the echo.
 func (e *echo) endOfTurn(ctx context.Context) error {
 	item := "item_" + uuid.NewString()[:8]
+	if e.save != "" {
+		path := filepath.Join(e.save, time.Now().Format("150405.000")+"-"+item+".wav")
+		if err := writeWAV(path, e.recording); err != nil {
+			e.log.Warn("cannot save the utterance", "error", err)
+		} else {
+			e.log.Info("saved the utterance", "path", path)
+		}
+	}
 	for _, step := range []map[string]any{
 		{"type": "input_audio_buffer.speech_stopped", "item_id": item},
 		{"type": "conversation.item.input_audio_transcription.completed", "item_id": item,
@@ -300,14 +301,4 @@ func truncate(text string, n int) string {
 		return text
 	}
 	return text[:n] + "…"
-}
-
-func isLoud(pcm []byte) bool {
-	for i := 0; i+1 < len(pcm); i += 2 {
-		sample := int16(binary.LittleEndian.Uint16(pcm[i:]))
-		if sample > silenceAmplitude || sample < -silenceAmplitude {
-			return true
-		}
-	}
-	return false
 }

@@ -223,6 +223,64 @@ func (TaskState) EnumDescriptor() ([]byte, []int) {
 	return file_jarvis_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{2}
 }
 
+// NotificationKind says why a user should look at their phone.
+type NotificationKind int32
+
+const (
+	// Default value. Never sent.
+	NotificationKind_NOTIFICATION_KIND_UNSPECIFIED NotificationKind = 0
+	// A command on one of the user's computers waits for their approval.
+	NotificationKind_NOTIFICATION_KIND_APPROVAL_NEEDED NotificationKind = 1
+	// A background task waits for the user to confirm an action, and no
+	// conversation is open to ask them.
+	NotificationKind_NOTIFICATION_KIND_CONFIRMATION_NEEDED NotificationKind = 2
+	// A background task ended while no conversation was open to tell them.
+	NotificationKind_NOTIFICATION_KIND_TASK_FINISHED NotificationKind = 3
+)
+
+// Enum value maps for NotificationKind.
+var (
+	NotificationKind_name = map[int32]string{
+		0: "NOTIFICATION_KIND_UNSPECIFIED",
+		1: "NOTIFICATION_KIND_APPROVAL_NEEDED",
+		2: "NOTIFICATION_KIND_CONFIRMATION_NEEDED",
+		3: "NOTIFICATION_KIND_TASK_FINISHED",
+	}
+	NotificationKind_value = map[string]int32{
+		"NOTIFICATION_KIND_UNSPECIFIED":         0,
+		"NOTIFICATION_KIND_APPROVAL_NEEDED":     1,
+		"NOTIFICATION_KIND_CONFIRMATION_NEEDED": 2,
+		"NOTIFICATION_KIND_TASK_FINISHED":       3,
+	}
+)
+
+func (x NotificationKind) Enum() *NotificationKind {
+	p := new(NotificationKind)
+	*p = x
+	return p
+}
+
+func (x NotificationKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NotificationKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_jarvis_orchestrator_v1_orchestrator_proto_enumTypes[3].Descriptor()
+}
+
+func (NotificationKind) Type() protoreflect.EnumType {
+	return &file_jarvis_orchestrator_v1_orchestrator_proto_enumTypes[3]
+}
+
+func (x NotificationKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NotificationKind.Descriptor instead.
+func (NotificationKind) EnumDescriptor() ([]byte, []int) {
+	return file_jarvis_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{3}
+}
+
 // OpenConversationRequest is the input to OpenConversation.
 type OpenConversationRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2498,6 +2556,301 @@ func (x *SubmitDeviceApprovalResponse) GetDuration() *durationpb.Duration {
 	return nil
 }
 
+// Notification is something to tell a user on their phone. It carries no
+// content from the task (goals and results stay in the app, behind the
+// user's sign-in), only what the notification is about.
+type Notification struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Increasing id.
+	NotificationId int64 `protobuf:"varint,1,opt,name=notification_id,json=notificationId,proto3" json:"notification_id,omitempty"`
+	// Tenant (UUID).
+	TenantId string `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// User.
+	UserId string `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// What it is about.
+	Kind NotificationKind `protobuf:"varint,4,opt,name=kind,proto3,enum=jarvis.orchestrator.v1.NotificationKind" json:"kind,omitempty"`
+	// The task concerned.
+	TaskId string `protobuf:"bytes,5,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	// The task's state when the notification was made.
+	TaskState TaskState `protobuf:"varint,6,opt,name=task_state,json=taskState,proto3,enum=jarvis.orchestrator.v1.TaskState" json:"task_state,omitempty"`
+	// When it was made.
+	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Notification) Reset() {
+	*x = Notification{}
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Notification) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Notification) ProtoMessage() {}
+
+func (x *Notification) ProtoReflect() protoreflect.Message {
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Notification.ProtoReflect.Descriptor instead.
+func (*Notification) Descriptor() ([]byte, []int) {
+	return file_jarvis_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *Notification) GetNotificationId() int64 {
+	if x != nil {
+		return x.NotificationId
+	}
+	return 0
+}
+
+func (x *Notification) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *Notification) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *Notification) GetKind() NotificationKind {
+	if x != nil {
+		return x.Kind
+	}
+	return NotificationKind_NOTIFICATION_KIND_UNSPECIFIED
+}
+
+func (x *Notification) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *Notification) GetTaskState() TaskState {
+	if x != nil {
+		return x.TaskState
+	}
+	return TaskState_TASK_STATE_UNSPECIFIED
+}
+
+func (x *Notification) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+// ClaimNotificationsRequest is the input to ClaimNotifications.
+type ClaimNotificationsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Who claims (e.g. host and process), for logs; 1 to 128 characters.
+	Consumer string `protobuf:"bytes,1,opt,name=consumer,proto3" json:"consumer,omitempty"`
+	// At most this many, 1 to 100.
+	Max int32 `protobuf:"varint,2,opt,name=max,proto3" json:"max,omitempty"`
+	// How long to wait when none is pending, at most 30 s; 0 returns at once.
+	Wait          *durationpb.Duration `protobuf:"bytes,3,opt,name=wait,proto3" json:"wait,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClaimNotificationsRequest) Reset() {
+	*x = ClaimNotificationsRequest{}
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClaimNotificationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClaimNotificationsRequest) ProtoMessage() {}
+
+func (x *ClaimNotificationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClaimNotificationsRequest.ProtoReflect.Descriptor instead.
+func (*ClaimNotificationsRequest) Descriptor() ([]byte, []int) {
+	return file_jarvis_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ClaimNotificationsRequest) GetConsumer() string {
+	if x != nil {
+		return x.Consumer
+	}
+	return ""
+}
+
+func (x *ClaimNotificationsRequest) GetMax() int32 {
+	if x != nil {
+		return x.Max
+	}
+	return 0
+}
+
+func (x *ClaimNotificationsRequest) GetWait() *durationpb.Duration {
+	if x != nil {
+		return x.Wait
+	}
+	return nil
+}
+
+// ClaimNotificationsResponse is the output of ClaimNotifications.
+type ClaimNotificationsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The claimed notifications, oldest first; empty when none came in time.
+	Notifications []*Notification `protobuf:"bytes,1,rep,name=notifications,proto3" json:"notifications,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClaimNotificationsResponse) Reset() {
+	*x = ClaimNotificationsResponse{}
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClaimNotificationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClaimNotificationsResponse) ProtoMessage() {}
+
+func (x *ClaimNotificationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClaimNotificationsResponse.ProtoReflect.Descriptor instead.
+func (*ClaimNotificationsResponse) Descriptor() ([]byte, []int) {
+	return file_jarvis_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ClaimNotificationsResponse) GetNotifications() []*Notification {
+	if x != nil {
+		return x.Notifications
+	}
+	return nil
+}
+
+// CompleteNotificationsRequest is the input to CompleteNotifications.
+type CompleteNotificationsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The notifications handled.
+	NotificationIds []int64 `protobuf:"varint,1,rep,packed,name=notification_ids,json=notificationIds,proto3" json:"notification_ids,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CompleteNotificationsRequest) Reset() {
+	*x = CompleteNotificationsRequest{}
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteNotificationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteNotificationsRequest) ProtoMessage() {}
+
+func (x *CompleteNotificationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteNotificationsRequest.ProtoReflect.Descriptor instead.
+func (*CompleteNotificationsRequest) Descriptor() ([]byte, []int) {
+	return file_jarvis_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *CompleteNotificationsRequest) GetNotificationIds() []int64 {
+	if x != nil {
+		return x.NotificationIds
+	}
+	return nil
+}
+
+// CompleteNotificationsResponse is the output of CompleteNotifications.
+type CompleteNotificationsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteNotificationsResponse) Reset() {
+	*x = CompleteNotificationsResponse{}
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteNotificationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteNotificationsResponse) ProtoMessage() {}
+
+func (x *CompleteNotificationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteNotificationsResponse.ProtoReflect.Descriptor instead.
+func (*CompleteNotificationsResponse) Descriptor() ([]byte, []int) {
+	return file_jarvis_orchestrator_v1_orchestrator_proto_rawDescGZIP(), []int{40}
+}
+
 var File_jarvis_orchestrator_v1_orchestrator_proto protoreflect.FileDescriptor
 
 const file_jarvis_orchestrator_v1_orchestrator_proto_rawDesc = "" +
@@ -2652,7 +3005,26 @@ const file_jarvis_orchestrator_v1_orchestrator_proto_rawDesc = "" +
 	"\tsignature\x18\x05 \x01(\fR\tsignature\"m\n" +
 	"\x1cSubmitDeviceApprovalResponse\x12\x16\n" +
 	"\x06output\x18\x01 \x01(\tR\x06output\x125\n" +
-	"\bduration\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\bduration*\xa9\x02\n" +
+	"\bduration\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\bduration\"\xc3\x02\n" +
+	"\fNotification\x12'\n" +
+	"\x0fnotification_id\x18\x01 \x01(\x03R\x0enotificationId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId\x12<\n" +
+	"\x04kind\x18\x04 \x01(\x0e2(.jarvis.orchestrator.v1.NotificationKindR\x04kind\x12\x17\n" +
+	"\atask_id\x18\x05 \x01(\tR\x06taskId\x12@\n" +
+	"\n" +
+	"task_state\x18\x06 \x01(\x0e2!.jarvis.orchestrator.v1.TaskStateR\ttaskState\x12;\n" +
+	"\vcreate_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\"x\n" +
+	"\x19ClaimNotificationsRequest\x12\x1a\n" +
+	"\bconsumer\x18\x01 \x01(\tR\bconsumer\x12\x10\n" +
+	"\x03max\x18\x02 \x01(\x05R\x03max\x12-\n" +
+	"\x04wait\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x04wait\"h\n" +
+	"\x1aClaimNotificationsResponse\x12J\n" +
+	"\rnotifications\x18\x01 \x03(\v2$.jarvis.orchestrator.v1.NotificationR\rnotifications\"I\n" +
+	"\x1cCompleteNotificationsRequest\x12)\n" +
+	"\x10notification_ids\x18\x01 \x03(\x03R\x0fnotificationIds\"\x1f\n" +
+	"\x1dCompleteNotificationsResponse*\xa9\x02\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12'\n" +
 	"#ERROR_REASON_CONVERSATION_NOT_FOUND\x10\x01\x12$\n" +
@@ -2674,7 +3046,12 @@ const file_jarvis_orchestrator_v1_orchestrator_proto_rawDesc = "" +
 	"\x1cTASK_STATE_AWAITING_APPROVAL\x10\x04\x12\x18\n" +
 	"\x14TASK_STATE_SUCCEEDED\x10\x05\x12\x15\n" +
 	"\x11TASK_STATE_FAILED\x10\x06\x12\x18\n" +
-	"\x14TASK_STATE_CANCELLED\x10\a2\xfe\v\n" +
+	"\x14TASK_STATE_CANCELLED\x10\a*\xac\x01\n" +
+	"\x10NotificationKind\x12!\n" +
+	"\x1dNOTIFICATION_KIND_UNSPECIFIED\x10\x00\x12%\n" +
+	"!NOTIFICATION_KIND_APPROVAL_NEEDED\x10\x01\x12)\n" +
+	"%NOTIFICATION_KIND_CONFIRMATION_NEEDED\x10\x02\x12#\n" +
+	"\x1fNOTIFICATION_KIND_TASK_FINISHED\x10\x032\x82\x0e\n" +
 	"\x13OrchestratorService\x12u\n" +
 	"\x10OpenConversation\x12/.jarvis.orchestrator.v1.OpenConversationRequest\x1a0.jarvis.orchestrator.v1.OpenConversationResponse\x12c\n" +
 	"\n" +
@@ -2691,7 +3068,9 @@ const file_jarvis_orchestrator_v1_orchestrator_proto_rawDesc = "" +
 	"\x0eRegisterDevice\x12-.jarvis.orchestrator.v1.RegisterDeviceRequest\x1a..jarvis.orchestrator.v1.RegisterDeviceResponse\x12f\n" +
 	"\vListDevices\x12*.jarvis.orchestrator.v1.ListDevicesRequest\x1a+.jarvis.orchestrator.v1.ListDevicesResponse\x12i\n" +
 	"\fRemoveDevice\x12+.jarvis.orchestrator.v1.RemoveDeviceRequest\x1a,.jarvis.orchestrator.v1.RemoveDeviceResponse\x12\x81\x01\n" +
-	"\x14SubmitDeviceApproval\x123.jarvis.orchestrator.v1.SubmitDeviceApprovalRequest\x1a4.jarvis.orchestrator.v1.SubmitDeviceApprovalResponseB\xe7\x01\n" +
+	"\x14SubmitDeviceApproval\x123.jarvis.orchestrator.v1.SubmitDeviceApprovalRequest\x1a4.jarvis.orchestrator.v1.SubmitDeviceApprovalResponse\x12{\n" +
+	"\x12ClaimNotifications\x121.jarvis.orchestrator.v1.ClaimNotificationsRequest\x1a2.jarvis.orchestrator.v1.ClaimNotificationsResponse\x12\x84\x01\n" +
+	"\x15CompleteNotifications\x124.jarvis.orchestrator.v1.CompleteNotificationsRequest\x1a5.jarvis.orchestrator.v1.CompleteNotificationsResponseB\xe7\x01\n" +
 	"\x1acom.jarvis.orchestrator.v1B\x11OrchestratorProtoP\x01Z<jarvis.internal/gen/go/jarvis/orchestrator/v1;orchestratorv1\xa2\x02\x03JOX\xaa\x02\x16Jarvis.Orchestrator.V1\xca\x02\x16Jarvis\\Orchestrator\\V1\xe2\x02\"Jarvis\\Orchestrator\\V1\\GPBMetadata\xea\x02\x18Jarvis::Orchestrator::V1b\x06proto3"
 
 var (
@@ -2706,107 +3085,122 @@ func file_jarvis_orchestrator_v1_orchestrator_proto_rawDescGZIP() []byte {
 	return file_jarvis_orchestrator_v1_orchestrator_proto_rawDescData
 }
 
-var file_jarvis_orchestrator_v1_orchestrator_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_jarvis_orchestrator_v1_orchestrator_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_jarvis_orchestrator_v1_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_jarvis_orchestrator_v1_orchestrator_proto_goTypes = []any{
-	(ErrorReason)(0),                     // 0: jarvis.orchestrator.v1.ErrorReason
-	(Role)(0),                            // 1: jarvis.orchestrator.v1.Role
-	(TaskState)(0),                       // 2: jarvis.orchestrator.v1.TaskState
-	(*OpenConversationRequest)(nil),      // 3: jarvis.orchestrator.v1.OpenConversationRequest
-	(*OpenConversationResponse)(nil),     // 4: jarvis.orchestrator.v1.OpenConversationResponse
-	(*FunctionTool)(nil),                 // 5: jarvis.orchestrator.v1.FunctionTool
-	(*RecordTurnRequest)(nil),            // 6: jarvis.orchestrator.v1.RecordTurnRequest
-	(*RecordTurnResponse)(nil),           // 7: jarvis.orchestrator.v1.RecordTurnResponse
-	(*CallToolRequest)(nil),              // 8: jarvis.orchestrator.v1.CallToolRequest
-	(*CallToolResponse)(nil),             // 9: jarvis.orchestrator.v1.CallToolResponse
-	(*AckToolOutputRequest)(nil),         // 10: jarvis.orchestrator.v1.AckToolOutputRequest
-	(*AckToolOutputResponse)(nil),        // 11: jarvis.orchestrator.v1.AckToolOutputResponse
-	(*WatchConversationRequest)(nil),     // 12: jarvis.orchestrator.v1.WatchConversationRequest
-	(*WatchConversationResponse)(nil),    // 13: jarvis.orchestrator.v1.WatchConversationResponse
-	(*ConversationEvent)(nil),            // 14: jarvis.orchestrator.v1.ConversationEvent
-	(*TaskFinished)(nil),                 // 15: jarvis.orchestrator.v1.TaskFinished
-	(*ConfirmationRequested)(nil),        // 16: jarvis.orchestrator.v1.ConfirmationRequested
-	(*DeviceApprovalRequested)(nil),      // 17: jarvis.orchestrator.v1.DeviceApprovalRequested
-	(*AckEventRequest)(nil),              // 18: jarvis.orchestrator.v1.AckEventRequest
-	(*AckEventResponse)(nil),             // 19: jarvis.orchestrator.v1.AckEventResponse
-	(*CloseConversationRequest)(nil),     // 20: jarvis.orchestrator.v1.CloseConversationRequest
-	(*CloseConversationResponse)(nil),    // 21: jarvis.orchestrator.v1.CloseConversationResponse
-	(*Task)(nil),                         // 22: jarvis.orchestrator.v1.Task
-	(*PendingApproval)(nil),              // 23: jarvis.orchestrator.v1.PendingApproval
-	(*GetTaskRequest)(nil),               // 24: jarvis.orchestrator.v1.GetTaskRequest
-	(*GetTaskResponse)(nil),              // 25: jarvis.orchestrator.v1.GetTaskResponse
-	(*ListTasksRequest)(nil),             // 26: jarvis.orchestrator.v1.ListTasksRequest
-	(*ListTasksResponse)(nil),            // 27: jarvis.orchestrator.v1.ListTasksResponse
-	(*CancelTaskRequest)(nil),            // 28: jarvis.orchestrator.v1.CancelTaskRequest
-	(*CancelTaskResponse)(nil),           // 29: jarvis.orchestrator.v1.CancelTaskResponse
-	(*Device)(nil),                       // 30: jarvis.orchestrator.v1.Device
-	(*RegisterDeviceRequest)(nil),        // 31: jarvis.orchestrator.v1.RegisterDeviceRequest
-	(*RegisterDeviceResponse)(nil),       // 32: jarvis.orchestrator.v1.RegisterDeviceResponse
-	(*ListDevicesRequest)(nil),           // 33: jarvis.orchestrator.v1.ListDevicesRequest
-	(*ListDevicesResponse)(nil),          // 34: jarvis.orchestrator.v1.ListDevicesResponse
-	(*RemoveDeviceRequest)(nil),          // 35: jarvis.orchestrator.v1.RemoveDeviceRequest
-	(*RemoveDeviceResponse)(nil),         // 36: jarvis.orchestrator.v1.RemoveDeviceResponse
-	(*SubmitDeviceApprovalRequest)(nil),  // 37: jarvis.orchestrator.v1.SubmitDeviceApprovalRequest
-	(*SubmitDeviceApprovalResponse)(nil), // 38: jarvis.orchestrator.v1.SubmitDeviceApprovalResponse
-	(v1.Provider)(0),                     // 39: jarvis.common.v1.Provider
-	(*timestamppb.Timestamp)(nil),        // 40: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),          // 41: google.protobuf.Duration
+	(ErrorReason)(0),                      // 0: jarvis.orchestrator.v1.ErrorReason
+	(Role)(0),                             // 1: jarvis.orchestrator.v1.Role
+	(TaskState)(0),                        // 2: jarvis.orchestrator.v1.TaskState
+	(NotificationKind)(0),                 // 3: jarvis.orchestrator.v1.NotificationKind
+	(*OpenConversationRequest)(nil),       // 4: jarvis.orchestrator.v1.OpenConversationRequest
+	(*OpenConversationResponse)(nil),      // 5: jarvis.orchestrator.v1.OpenConversationResponse
+	(*FunctionTool)(nil),                  // 6: jarvis.orchestrator.v1.FunctionTool
+	(*RecordTurnRequest)(nil),             // 7: jarvis.orchestrator.v1.RecordTurnRequest
+	(*RecordTurnResponse)(nil),            // 8: jarvis.orchestrator.v1.RecordTurnResponse
+	(*CallToolRequest)(nil),               // 9: jarvis.orchestrator.v1.CallToolRequest
+	(*CallToolResponse)(nil),              // 10: jarvis.orchestrator.v1.CallToolResponse
+	(*AckToolOutputRequest)(nil),          // 11: jarvis.orchestrator.v1.AckToolOutputRequest
+	(*AckToolOutputResponse)(nil),         // 12: jarvis.orchestrator.v1.AckToolOutputResponse
+	(*WatchConversationRequest)(nil),      // 13: jarvis.orchestrator.v1.WatchConversationRequest
+	(*WatchConversationResponse)(nil),     // 14: jarvis.orchestrator.v1.WatchConversationResponse
+	(*ConversationEvent)(nil),             // 15: jarvis.orchestrator.v1.ConversationEvent
+	(*TaskFinished)(nil),                  // 16: jarvis.orchestrator.v1.TaskFinished
+	(*ConfirmationRequested)(nil),         // 17: jarvis.orchestrator.v1.ConfirmationRequested
+	(*DeviceApprovalRequested)(nil),       // 18: jarvis.orchestrator.v1.DeviceApprovalRequested
+	(*AckEventRequest)(nil),               // 19: jarvis.orchestrator.v1.AckEventRequest
+	(*AckEventResponse)(nil),              // 20: jarvis.orchestrator.v1.AckEventResponse
+	(*CloseConversationRequest)(nil),      // 21: jarvis.orchestrator.v1.CloseConversationRequest
+	(*CloseConversationResponse)(nil),     // 22: jarvis.orchestrator.v1.CloseConversationResponse
+	(*Task)(nil),                          // 23: jarvis.orchestrator.v1.Task
+	(*PendingApproval)(nil),               // 24: jarvis.orchestrator.v1.PendingApproval
+	(*GetTaskRequest)(nil),                // 25: jarvis.orchestrator.v1.GetTaskRequest
+	(*GetTaskResponse)(nil),               // 26: jarvis.orchestrator.v1.GetTaskResponse
+	(*ListTasksRequest)(nil),              // 27: jarvis.orchestrator.v1.ListTasksRequest
+	(*ListTasksResponse)(nil),             // 28: jarvis.orchestrator.v1.ListTasksResponse
+	(*CancelTaskRequest)(nil),             // 29: jarvis.orchestrator.v1.CancelTaskRequest
+	(*CancelTaskResponse)(nil),            // 30: jarvis.orchestrator.v1.CancelTaskResponse
+	(*Device)(nil),                        // 31: jarvis.orchestrator.v1.Device
+	(*RegisterDeviceRequest)(nil),         // 32: jarvis.orchestrator.v1.RegisterDeviceRequest
+	(*RegisterDeviceResponse)(nil),        // 33: jarvis.orchestrator.v1.RegisterDeviceResponse
+	(*ListDevicesRequest)(nil),            // 34: jarvis.orchestrator.v1.ListDevicesRequest
+	(*ListDevicesResponse)(nil),           // 35: jarvis.orchestrator.v1.ListDevicesResponse
+	(*RemoveDeviceRequest)(nil),           // 36: jarvis.orchestrator.v1.RemoveDeviceRequest
+	(*RemoveDeviceResponse)(nil),          // 37: jarvis.orchestrator.v1.RemoveDeviceResponse
+	(*SubmitDeviceApprovalRequest)(nil),   // 38: jarvis.orchestrator.v1.SubmitDeviceApprovalRequest
+	(*SubmitDeviceApprovalResponse)(nil),  // 39: jarvis.orchestrator.v1.SubmitDeviceApprovalResponse
+	(*Notification)(nil),                  // 40: jarvis.orchestrator.v1.Notification
+	(*ClaimNotificationsRequest)(nil),     // 41: jarvis.orchestrator.v1.ClaimNotificationsRequest
+	(*ClaimNotificationsResponse)(nil),    // 42: jarvis.orchestrator.v1.ClaimNotificationsResponse
+	(*CompleteNotificationsRequest)(nil),  // 43: jarvis.orchestrator.v1.CompleteNotificationsRequest
+	(*CompleteNotificationsResponse)(nil), // 44: jarvis.orchestrator.v1.CompleteNotificationsResponse
+	(v1.Provider)(0),                      // 45: jarvis.common.v1.Provider
+	(*timestamppb.Timestamp)(nil),         // 46: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),           // 47: google.protobuf.Duration
 }
 var file_jarvis_orchestrator_v1_orchestrator_proto_depIdxs = []int32{
-	39, // 0: jarvis.orchestrator.v1.OpenConversationRequest.provider:type_name -> jarvis.common.v1.Provider
-	5,  // 1: jarvis.orchestrator.v1.OpenConversationResponse.tools:type_name -> jarvis.orchestrator.v1.FunctionTool
+	45, // 0: jarvis.orchestrator.v1.OpenConversationRequest.provider:type_name -> jarvis.common.v1.Provider
+	6,  // 1: jarvis.orchestrator.v1.OpenConversationResponse.tools:type_name -> jarvis.orchestrator.v1.FunctionTool
 	1,  // 2: jarvis.orchestrator.v1.RecordTurnRequest.role:type_name -> jarvis.orchestrator.v1.Role
-	14, // 3: jarvis.orchestrator.v1.WatchConversationResponse.event:type_name -> jarvis.orchestrator.v1.ConversationEvent
-	15, // 4: jarvis.orchestrator.v1.ConversationEvent.task_finished:type_name -> jarvis.orchestrator.v1.TaskFinished
-	16, // 5: jarvis.orchestrator.v1.ConversationEvent.confirmation_requested:type_name -> jarvis.orchestrator.v1.ConfirmationRequested
-	17, // 6: jarvis.orchestrator.v1.ConversationEvent.device_approval_requested:type_name -> jarvis.orchestrator.v1.DeviceApprovalRequested
-	40, // 7: jarvis.orchestrator.v1.ConversationEvent.create_time:type_name -> google.protobuf.Timestamp
-	22, // 8: jarvis.orchestrator.v1.TaskFinished.task:type_name -> jarvis.orchestrator.v1.Task
+	15, // 3: jarvis.orchestrator.v1.WatchConversationResponse.event:type_name -> jarvis.orchestrator.v1.ConversationEvent
+	16, // 4: jarvis.orchestrator.v1.ConversationEvent.task_finished:type_name -> jarvis.orchestrator.v1.TaskFinished
+	17, // 5: jarvis.orchestrator.v1.ConversationEvent.confirmation_requested:type_name -> jarvis.orchestrator.v1.ConfirmationRequested
+	18, // 6: jarvis.orchestrator.v1.ConversationEvent.device_approval_requested:type_name -> jarvis.orchestrator.v1.DeviceApprovalRequested
+	46, // 7: jarvis.orchestrator.v1.ConversationEvent.create_time:type_name -> google.protobuf.Timestamp
+	23, // 8: jarvis.orchestrator.v1.TaskFinished.task:type_name -> jarvis.orchestrator.v1.Task
 	2,  // 9: jarvis.orchestrator.v1.Task.state:type_name -> jarvis.orchestrator.v1.TaskState
-	40, // 10: jarvis.orchestrator.v1.Task.create_time:type_name -> google.protobuf.Timestamp
-	40, // 11: jarvis.orchestrator.v1.Task.update_time:type_name -> google.protobuf.Timestamp
-	23, // 12: jarvis.orchestrator.v1.Task.pending_approval:type_name -> jarvis.orchestrator.v1.PendingApproval
-	40, // 13: jarvis.orchestrator.v1.PendingApproval.expire_time:type_name -> google.protobuf.Timestamp
-	22, // 14: jarvis.orchestrator.v1.GetTaskResponse.task:type_name -> jarvis.orchestrator.v1.Task
-	22, // 15: jarvis.orchestrator.v1.ListTasksResponse.tasks:type_name -> jarvis.orchestrator.v1.Task
-	22, // 16: jarvis.orchestrator.v1.CancelTaskResponse.task:type_name -> jarvis.orchestrator.v1.Task
-	40, // 17: jarvis.orchestrator.v1.Device.create_time:type_name -> google.protobuf.Timestamp
-	30, // 18: jarvis.orchestrator.v1.RegisterDeviceResponse.device:type_name -> jarvis.orchestrator.v1.Device
-	30, // 19: jarvis.orchestrator.v1.ListDevicesResponse.devices:type_name -> jarvis.orchestrator.v1.Device
-	41, // 20: jarvis.orchestrator.v1.SubmitDeviceApprovalResponse.duration:type_name -> google.protobuf.Duration
-	3,  // 21: jarvis.orchestrator.v1.OrchestratorService.OpenConversation:input_type -> jarvis.orchestrator.v1.OpenConversationRequest
-	6,  // 22: jarvis.orchestrator.v1.OrchestratorService.RecordTurn:input_type -> jarvis.orchestrator.v1.RecordTurnRequest
-	8,  // 23: jarvis.orchestrator.v1.OrchestratorService.CallTool:input_type -> jarvis.orchestrator.v1.CallToolRequest
-	10, // 24: jarvis.orchestrator.v1.OrchestratorService.AckToolOutput:input_type -> jarvis.orchestrator.v1.AckToolOutputRequest
-	12, // 25: jarvis.orchestrator.v1.OrchestratorService.WatchConversation:input_type -> jarvis.orchestrator.v1.WatchConversationRequest
-	18, // 26: jarvis.orchestrator.v1.OrchestratorService.AckEvent:input_type -> jarvis.orchestrator.v1.AckEventRequest
-	20, // 27: jarvis.orchestrator.v1.OrchestratorService.CloseConversation:input_type -> jarvis.orchestrator.v1.CloseConversationRequest
-	24, // 28: jarvis.orchestrator.v1.OrchestratorService.GetTask:input_type -> jarvis.orchestrator.v1.GetTaskRequest
-	26, // 29: jarvis.orchestrator.v1.OrchestratorService.ListTasks:input_type -> jarvis.orchestrator.v1.ListTasksRequest
-	28, // 30: jarvis.orchestrator.v1.OrchestratorService.CancelTask:input_type -> jarvis.orchestrator.v1.CancelTaskRequest
-	31, // 31: jarvis.orchestrator.v1.OrchestratorService.RegisterDevice:input_type -> jarvis.orchestrator.v1.RegisterDeviceRequest
-	33, // 32: jarvis.orchestrator.v1.OrchestratorService.ListDevices:input_type -> jarvis.orchestrator.v1.ListDevicesRequest
-	35, // 33: jarvis.orchestrator.v1.OrchestratorService.RemoveDevice:input_type -> jarvis.orchestrator.v1.RemoveDeviceRequest
-	37, // 34: jarvis.orchestrator.v1.OrchestratorService.SubmitDeviceApproval:input_type -> jarvis.orchestrator.v1.SubmitDeviceApprovalRequest
-	4,  // 35: jarvis.orchestrator.v1.OrchestratorService.OpenConversation:output_type -> jarvis.orchestrator.v1.OpenConversationResponse
-	7,  // 36: jarvis.orchestrator.v1.OrchestratorService.RecordTurn:output_type -> jarvis.orchestrator.v1.RecordTurnResponse
-	9,  // 37: jarvis.orchestrator.v1.OrchestratorService.CallTool:output_type -> jarvis.orchestrator.v1.CallToolResponse
-	11, // 38: jarvis.orchestrator.v1.OrchestratorService.AckToolOutput:output_type -> jarvis.orchestrator.v1.AckToolOutputResponse
-	13, // 39: jarvis.orchestrator.v1.OrchestratorService.WatchConversation:output_type -> jarvis.orchestrator.v1.WatchConversationResponse
-	19, // 40: jarvis.orchestrator.v1.OrchestratorService.AckEvent:output_type -> jarvis.orchestrator.v1.AckEventResponse
-	21, // 41: jarvis.orchestrator.v1.OrchestratorService.CloseConversation:output_type -> jarvis.orchestrator.v1.CloseConversationResponse
-	25, // 42: jarvis.orchestrator.v1.OrchestratorService.GetTask:output_type -> jarvis.orchestrator.v1.GetTaskResponse
-	27, // 43: jarvis.orchestrator.v1.OrchestratorService.ListTasks:output_type -> jarvis.orchestrator.v1.ListTasksResponse
-	29, // 44: jarvis.orchestrator.v1.OrchestratorService.CancelTask:output_type -> jarvis.orchestrator.v1.CancelTaskResponse
-	32, // 45: jarvis.orchestrator.v1.OrchestratorService.RegisterDevice:output_type -> jarvis.orchestrator.v1.RegisterDeviceResponse
-	34, // 46: jarvis.orchestrator.v1.OrchestratorService.ListDevices:output_type -> jarvis.orchestrator.v1.ListDevicesResponse
-	36, // 47: jarvis.orchestrator.v1.OrchestratorService.RemoveDevice:output_type -> jarvis.orchestrator.v1.RemoveDeviceResponse
-	38, // 48: jarvis.orchestrator.v1.OrchestratorService.SubmitDeviceApproval:output_type -> jarvis.orchestrator.v1.SubmitDeviceApprovalResponse
-	35, // [35:49] is the sub-list for method output_type
-	21, // [21:35] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	46, // 10: jarvis.orchestrator.v1.Task.create_time:type_name -> google.protobuf.Timestamp
+	46, // 11: jarvis.orchestrator.v1.Task.update_time:type_name -> google.protobuf.Timestamp
+	24, // 12: jarvis.orchestrator.v1.Task.pending_approval:type_name -> jarvis.orchestrator.v1.PendingApproval
+	46, // 13: jarvis.orchestrator.v1.PendingApproval.expire_time:type_name -> google.protobuf.Timestamp
+	23, // 14: jarvis.orchestrator.v1.GetTaskResponse.task:type_name -> jarvis.orchestrator.v1.Task
+	23, // 15: jarvis.orchestrator.v1.ListTasksResponse.tasks:type_name -> jarvis.orchestrator.v1.Task
+	23, // 16: jarvis.orchestrator.v1.CancelTaskResponse.task:type_name -> jarvis.orchestrator.v1.Task
+	46, // 17: jarvis.orchestrator.v1.Device.create_time:type_name -> google.protobuf.Timestamp
+	31, // 18: jarvis.orchestrator.v1.RegisterDeviceResponse.device:type_name -> jarvis.orchestrator.v1.Device
+	31, // 19: jarvis.orchestrator.v1.ListDevicesResponse.devices:type_name -> jarvis.orchestrator.v1.Device
+	47, // 20: jarvis.orchestrator.v1.SubmitDeviceApprovalResponse.duration:type_name -> google.protobuf.Duration
+	3,  // 21: jarvis.orchestrator.v1.Notification.kind:type_name -> jarvis.orchestrator.v1.NotificationKind
+	2,  // 22: jarvis.orchestrator.v1.Notification.task_state:type_name -> jarvis.orchestrator.v1.TaskState
+	46, // 23: jarvis.orchestrator.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
+	47, // 24: jarvis.orchestrator.v1.ClaimNotificationsRequest.wait:type_name -> google.protobuf.Duration
+	40, // 25: jarvis.orchestrator.v1.ClaimNotificationsResponse.notifications:type_name -> jarvis.orchestrator.v1.Notification
+	4,  // 26: jarvis.orchestrator.v1.OrchestratorService.OpenConversation:input_type -> jarvis.orchestrator.v1.OpenConversationRequest
+	7,  // 27: jarvis.orchestrator.v1.OrchestratorService.RecordTurn:input_type -> jarvis.orchestrator.v1.RecordTurnRequest
+	9,  // 28: jarvis.orchestrator.v1.OrchestratorService.CallTool:input_type -> jarvis.orchestrator.v1.CallToolRequest
+	11, // 29: jarvis.orchestrator.v1.OrchestratorService.AckToolOutput:input_type -> jarvis.orchestrator.v1.AckToolOutputRequest
+	13, // 30: jarvis.orchestrator.v1.OrchestratorService.WatchConversation:input_type -> jarvis.orchestrator.v1.WatchConversationRequest
+	19, // 31: jarvis.orchestrator.v1.OrchestratorService.AckEvent:input_type -> jarvis.orchestrator.v1.AckEventRequest
+	21, // 32: jarvis.orchestrator.v1.OrchestratorService.CloseConversation:input_type -> jarvis.orchestrator.v1.CloseConversationRequest
+	25, // 33: jarvis.orchestrator.v1.OrchestratorService.GetTask:input_type -> jarvis.orchestrator.v1.GetTaskRequest
+	27, // 34: jarvis.orchestrator.v1.OrchestratorService.ListTasks:input_type -> jarvis.orchestrator.v1.ListTasksRequest
+	29, // 35: jarvis.orchestrator.v1.OrchestratorService.CancelTask:input_type -> jarvis.orchestrator.v1.CancelTaskRequest
+	32, // 36: jarvis.orchestrator.v1.OrchestratorService.RegisterDevice:input_type -> jarvis.orchestrator.v1.RegisterDeviceRequest
+	34, // 37: jarvis.orchestrator.v1.OrchestratorService.ListDevices:input_type -> jarvis.orchestrator.v1.ListDevicesRequest
+	36, // 38: jarvis.orchestrator.v1.OrchestratorService.RemoveDevice:input_type -> jarvis.orchestrator.v1.RemoveDeviceRequest
+	38, // 39: jarvis.orchestrator.v1.OrchestratorService.SubmitDeviceApproval:input_type -> jarvis.orchestrator.v1.SubmitDeviceApprovalRequest
+	41, // 40: jarvis.orchestrator.v1.OrchestratorService.ClaimNotifications:input_type -> jarvis.orchestrator.v1.ClaimNotificationsRequest
+	43, // 41: jarvis.orchestrator.v1.OrchestratorService.CompleteNotifications:input_type -> jarvis.orchestrator.v1.CompleteNotificationsRequest
+	5,  // 42: jarvis.orchestrator.v1.OrchestratorService.OpenConversation:output_type -> jarvis.orchestrator.v1.OpenConversationResponse
+	8,  // 43: jarvis.orchestrator.v1.OrchestratorService.RecordTurn:output_type -> jarvis.orchestrator.v1.RecordTurnResponse
+	10, // 44: jarvis.orchestrator.v1.OrchestratorService.CallTool:output_type -> jarvis.orchestrator.v1.CallToolResponse
+	12, // 45: jarvis.orchestrator.v1.OrchestratorService.AckToolOutput:output_type -> jarvis.orchestrator.v1.AckToolOutputResponse
+	14, // 46: jarvis.orchestrator.v1.OrchestratorService.WatchConversation:output_type -> jarvis.orchestrator.v1.WatchConversationResponse
+	20, // 47: jarvis.orchestrator.v1.OrchestratorService.AckEvent:output_type -> jarvis.orchestrator.v1.AckEventResponse
+	22, // 48: jarvis.orchestrator.v1.OrchestratorService.CloseConversation:output_type -> jarvis.orchestrator.v1.CloseConversationResponse
+	26, // 49: jarvis.orchestrator.v1.OrchestratorService.GetTask:output_type -> jarvis.orchestrator.v1.GetTaskResponse
+	28, // 50: jarvis.orchestrator.v1.OrchestratorService.ListTasks:output_type -> jarvis.orchestrator.v1.ListTasksResponse
+	30, // 51: jarvis.orchestrator.v1.OrchestratorService.CancelTask:output_type -> jarvis.orchestrator.v1.CancelTaskResponse
+	33, // 52: jarvis.orchestrator.v1.OrchestratorService.RegisterDevice:output_type -> jarvis.orchestrator.v1.RegisterDeviceResponse
+	35, // 53: jarvis.orchestrator.v1.OrchestratorService.ListDevices:output_type -> jarvis.orchestrator.v1.ListDevicesResponse
+	37, // 54: jarvis.orchestrator.v1.OrchestratorService.RemoveDevice:output_type -> jarvis.orchestrator.v1.RemoveDeviceResponse
+	39, // 55: jarvis.orchestrator.v1.OrchestratorService.SubmitDeviceApproval:output_type -> jarvis.orchestrator.v1.SubmitDeviceApprovalResponse
+	42, // 56: jarvis.orchestrator.v1.OrchestratorService.ClaimNotifications:output_type -> jarvis.orchestrator.v1.ClaimNotificationsResponse
+	44, // 57: jarvis.orchestrator.v1.OrchestratorService.CompleteNotifications:output_type -> jarvis.orchestrator.v1.CompleteNotificationsResponse
+	42, // [42:58] is the sub-list for method output_type
+	26, // [26:42] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_jarvis_orchestrator_v1_orchestrator_proto_init() }
@@ -2824,8 +3218,8 @@ func file_jarvis_orchestrator_v1_orchestrator_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_jarvis_orchestrator_v1_orchestrator_proto_rawDesc), len(file_jarvis_orchestrator_v1_orchestrator_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   36,
+			NumEnums:      4,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -11,6 +11,7 @@ import (
 	"net"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -499,4 +500,52 @@ func (s *Service) SubmitDeviceApproval(ctx context.Context, req *orchv1.SubmitDe
 		return nil, status.Error(codes.Unavailable, "the device is not reachable")
 	}
 	return &orchv1.SubmitDeviceApprovalResponse{Output: out}, nil
+}
+
+// --- notifications ----------------------------------------------------------------
+
+const maxNotificationWait = 30 * time.Second
+
+var notificationKinds = map[string]orchv1.NotificationKind{
+	store.NotifyApproval:     orchv1.NotificationKind_NOTIFICATION_KIND_APPROVAL_NEEDED,
+	store.NotifyConfirmation: orchv1.NotificationKind_NOTIFICATION_KIND_CONFIRMATION_NEEDED,
+	store.NotifyFinished:     orchv1.NotificationKind_NOTIFICATION_KIND_TASK_FINISHED,
+}
+
+// ClaimNotifications implements OrchestratorServiceServer.
+func (s *Service) ClaimNotifications(ctx context.Context, req *orchv1.ClaimNotificationsRequest) (*orchv1.ClaimNotificationsResponse, error) {
+	wait := req.GetWait().AsDuration()
+	switch {
+	case !printable(req.GetConsumer(), 1, 128):
+		return nil, invalid("consumer must be 1 to 128 printable ASCII characters")
+	case req.GetMax() < 1 || req.GetMax() > 100:
+		return nil, invalid("max must be 1 to 100")
+	case wait < 0 || wait > maxNotificationWait:
+		return nil, invalid("wait must be 0 to 30s")
+	}
+	claimed, err := s.Engine.ClaimNotifications(ctx, req.GetConsumer(), int(req.GetMax()), wait)
+	if err != nil {
+		return nil, s.internal(ctx, "claim notifications", err)
+	}
+	resp := &orchv1.ClaimNotificationsResponse{}
+	for _, n := range claimed {
+		resp.Notifications = append(resp.Notifications, &orchv1.Notification{
+			NotificationId: n.ID, TenantId: n.TenantID.String(), UserId: n.UserID, Kind: notificationKinds[n.Kind],
+			TaskId: n.TaskID.String(), TaskState: engine.TaskStateProto(n.TaskState), CreateTime: timestamppb.New(n.CreatedAt),
+		})
+	}
+	return resp, nil
+}
+
+// CompleteNotifications implements OrchestratorServiceServer.
+func (s *Service) CompleteNotifications(ctx context.Context, req *orchv1.CompleteNotificationsRequest) (*orchv1.CompleteNotificationsResponse, error) {
+	if len(req.GetNotificationIds()) > 100 {
+		return nil, invalid("at most 100 notification_ids")
+	}
+	if len(req.GetNotificationIds()) > 0 {
+		if err := s.Store.CompleteNotifications(ctx, req.GetNotificationIds()); err != nil {
+			return nil, s.internal(ctx, "complete notifications", err)
+		}
+	}
+	return &orchv1.CompleteNotificationsResponse{}, nil
 }

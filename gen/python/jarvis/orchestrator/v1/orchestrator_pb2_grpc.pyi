@@ -125,6 +125,17 @@ class OrchestratorServiceStub:
       PERMISSION_DENIED    ERROR_REASON_APPROVAL_REJECTED (the device refused
                            the signature).
     """
+    ClaimNotifications: _grpc.UnaryUnaryMultiCallable[_orchestrator_pb2.ClaimNotificationsRequest, _orchestrator_pb2.ClaimNotificationsResponse]
+    """ClaimNotifications hands out things to tell users on their phones (push
+    notifications), oldest first, waiting up to `wait` for new ones. Each is
+    claimed for a minute: complete it with CompleteNotifications, or it is
+    handed out again (at most 5 times, and never once it is an hour old).
+    Several consumers may claim at once; none gets another's notification.
+    """
+    CompleteNotifications: _grpc.UnaryUnaryMultiCallable[_orchestrator_pb2.CompleteNotificationsRequest, _orchestrator_pb2.CompleteNotificationsResponse]
+    """CompleteNotifications marks claimed notifications as handled (sent, or
+    dropped because the user has no phone to send them to). Idempotent.
+    """
 
 @_typing.type_check_only
 class OrchestratorServiceAsyncStub(OrchestratorServiceStub):
@@ -222,6 +233,17 @@ class OrchestratorServiceAsyncStub(OrchestratorServiceStub):
       NOT_FOUND            ERROR_REASON_APPROVAL_NOT_FOUND.
       PERMISSION_DENIED    ERROR_REASON_APPROVAL_REJECTED (the device refused
                            the signature).
+    """
+    ClaimNotifications: _aio.UnaryUnaryMultiCallable[_orchestrator_pb2.ClaimNotificationsRequest, _orchestrator_pb2.ClaimNotificationsResponse]  # type: ignore[assignment]
+    """ClaimNotifications hands out things to tell users on their phones (push
+    notifications), oldest first, waiting up to `wait` for new ones. Each is
+    claimed for a minute: complete it with CompleteNotifications, or it is
+    handed out again (at most 5 times, and never once it is an hour old).
+    Several consumers may claim at once; none gets another's notification.
+    """
+    CompleteNotifications: _aio.UnaryUnaryMultiCallable[_orchestrator_pb2.CompleteNotificationsRequest, _orchestrator_pb2.CompleteNotificationsResponse]  # type: ignore[assignment]
+    """CompleteNotifications marks claimed notifications as handled (sent, or
+    dropped because the user has no phone to send them to). Idempotent.
     """
 
 class OrchestratorServiceServicer(metaclass=_abc_1.ABCMeta):
@@ -401,6 +423,29 @@ class OrchestratorServiceServicer(metaclass=_abc_1.ABCMeta):
           NOT_FOUND            ERROR_REASON_APPROVAL_NOT_FOUND.
           PERMISSION_DENIED    ERROR_REASON_APPROVAL_REJECTED (the device refused
                                the signature).
+        """
+
+    @_abc_1.abstractmethod
+    def ClaimNotifications(
+        self,
+        request: _orchestrator_pb2.ClaimNotificationsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_orchestrator_pb2.ClaimNotificationsResponse, _abc.Awaitable[_orchestrator_pb2.ClaimNotificationsResponse]]:
+        """ClaimNotifications hands out things to tell users on their phones (push
+        notifications), oldest first, waiting up to `wait` for new ones. Each is
+        claimed for a minute: complete it with CompleteNotifications, or it is
+        handed out again (at most 5 times, and never once it is an hour old).
+        Several consumers may claim at once; none gets another's notification.
+        """
+
+    @_abc_1.abstractmethod
+    def CompleteNotifications(
+        self,
+        request: _orchestrator_pb2.CompleteNotificationsRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_orchestrator_pb2.CompleteNotificationsResponse, _abc.Awaitable[_orchestrator_pb2.CompleteNotificationsResponse]]:
+        """CompleteNotifications marks claimed notifications as handled (sent, or
+        dropped because the user has no phone to send them to). Idempotent.
         """
 
 def add_OrchestratorServiceServicer_to_server(servicer: OrchestratorServiceServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

@@ -1,0 +1,9 @@
+# Swift messages for the apps (gen/swift). Run through tools/gen-swift.sh,
+# which builds the plugin pinned in tools/swift.
+version: v2
+plugins:
+  - local: tools/swift/.build/release/protoc-gen-swift
+    out: gen/swift/Sources/JarvisProto
+    opt:
+      - Visibility=Public
+      - FileNaming=PathToUnderscores

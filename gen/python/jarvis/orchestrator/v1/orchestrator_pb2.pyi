@@ -134,6 +134,38 @@ TASK_STATE_CANCELLED: TaskState.ValueType  # 7
 """Cancelled by the user."""
 Global___TaskState: _TypeAlias = TaskState  # noqa: Y015
 
+class _NotificationKind:
+    ValueType = _typing.NewType("ValueType", _builtins.int)
+    V: _TypeAlias = ValueType  # noqa: Y015
+
+class _NotificationKindEnumTypeWrapper(_enum_type_wrapper._EnumTypeWrapper[_NotificationKind.ValueType], _builtins.type):
+    DESCRIPTOR: _descriptor.EnumDescriptor
+    NOTIFICATION_KIND_UNSPECIFIED: _NotificationKind.ValueType  # 0
+    """Default value. Never sent."""
+    NOTIFICATION_KIND_APPROVAL_NEEDED: _NotificationKind.ValueType  # 1
+    """A command on one of the user's computers waits for their approval."""
+    NOTIFICATION_KIND_CONFIRMATION_NEEDED: _NotificationKind.ValueType  # 2
+    """A background task waits for the user to confirm an action, and no
+    conversation is open to ask them.
+    """
+    NOTIFICATION_KIND_TASK_FINISHED: _NotificationKind.ValueType  # 3
+    """A background task ended while no conversation was open to tell them."""
+
+class NotificationKind(_NotificationKind, metaclass=_NotificationKindEnumTypeWrapper):
+    """NotificationKind says why a user should look at their phone."""
+
+NOTIFICATION_KIND_UNSPECIFIED: NotificationKind.ValueType  # 0
+"""Default value. Never sent."""
+NOTIFICATION_KIND_APPROVAL_NEEDED: NotificationKind.ValueType  # 1
+"""A command on one of the user's computers waits for their approval."""
+NOTIFICATION_KIND_CONFIRMATION_NEEDED: NotificationKind.ValueType  # 2
+"""A background task waits for the user to confirm an action, and no
+conversation is open to ask them.
+"""
+NOTIFICATION_KIND_TASK_FINISHED: NotificationKind.ValueType  # 3
+"""A background task ended while no conversation was open to tell them."""
+Global___NotificationKind: _TypeAlias = NotificationKind  # noqa: Y015
+
 @_typing.final
 class OpenConversationRequest(_message.Message):
     """OpenConversationRequest is the input to OpenConversation."""
@@ -1231,3 +1263,151 @@ class SubmitDeviceApprovalResponse(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___SubmitDeviceApprovalResponse: _TypeAlias = SubmitDeviceApprovalResponse  # noqa: Y015
+
+@_typing.final
+class Notification(_message.Message):
+    """Notification is something to tell a user on their phone. It carries no
+    content from the task (goals and results stay in the app, behind the
+    user's sign-in), only what the notification is about.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    NOTIFICATION_ID_FIELD_NUMBER: _builtins.int
+    TENANT_ID_FIELD_NUMBER: _builtins.int
+    USER_ID_FIELD_NUMBER: _builtins.int
+    KIND_FIELD_NUMBER: _builtins.int
+    TASK_ID_FIELD_NUMBER: _builtins.int
+    TASK_STATE_FIELD_NUMBER: _builtins.int
+    CREATE_TIME_FIELD_NUMBER: _builtins.int
+    notification_id: _builtins.int
+    """Increasing id."""
+    tenant_id: _builtins.str
+    """Tenant (UUID)."""
+    user_id: _builtins.str
+    """User."""
+    kind: Global___NotificationKind.ValueType
+    """What it is about."""
+    task_id: _builtins.str
+    """The task concerned."""
+    task_state: Global___TaskState.ValueType
+    """The task's state when the notification was made."""
+    @_builtins.property
+    def create_time(self) -> _timestamp_pb2.Timestamp:
+        """When it was made."""
+
+    def __init__(
+        self,
+        *,
+        notification_id: _builtins.int = ...,
+        tenant_id: _builtins.str = ...,
+        user_id: _builtins.str = ...,
+        kind: Global___NotificationKind.ValueType = ...,
+        task_id: _builtins.str = ...,
+        task_state: Global___TaskState.ValueType = ...,
+        create_time: _timestamp_pb2.Timestamp | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["create_time", b"create_time"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["create_time", b"create_time", "kind", b"kind", "notification_id", b"notification_id", "task_id", b"task_id", "task_state", b"task_state", "tenant_id", b"tenant_id", "user_id", b"user_id"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___Notification: _TypeAlias = Notification  # noqa: Y015
+
+@_typing.final
+class ClaimNotificationsRequest(_message.Message):
+    """ClaimNotificationsRequest is the input to ClaimNotifications."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    CONSUMER_FIELD_NUMBER: _builtins.int
+    MAX_FIELD_NUMBER: _builtins.int
+    WAIT_FIELD_NUMBER: _builtins.int
+    consumer: _builtins.str
+    """Who claims (e.g. host and process), for logs; 1 to 128 characters."""
+    max: _builtins.int
+    """At most this many, 1 to 100."""
+    @_builtins.property
+    def wait(self) -> _duration_pb2.Duration:
+        """How long to wait when none is pending, at most 30 s; 0 returns at once."""
+
+    def __init__(
+        self,
+        *,
+        consumer: _builtins.str = ...,
+        max: _builtins.int = ...,
+        wait: _duration_pb2.Duration | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["wait", b"wait"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["consumer", b"consumer", "max", b"max", "wait", b"wait"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___ClaimNotificationsRequest: _TypeAlias = ClaimNotificationsRequest  # noqa: Y015
+
+@_typing.final
+class ClaimNotificationsResponse(_message.Message):
+    """ClaimNotificationsResponse is the output of ClaimNotifications."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    NOTIFICATIONS_FIELD_NUMBER: _builtins.int
+    @_builtins.property
+    def notifications(self) -> _containers.RepeatedCompositeFieldContainer[Global___Notification]:
+        """The claimed notifications, oldest first; empty when none came in time."""
+
+    def __init__(
+        self,
+        *,
+        notifications: _abc.Iterable[Global___Notification] | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["notifications", b"notifications"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___ClaimNotificationsResponse: _TypeAlias = ClaimNotificationsResponse  # noqa: Y015
+
+@_typing.final
+class CompleteNotificationsRequest(_message.Message):
+    """CompleteNotificationsRequest is the input to CompleteNotifications."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    NOTIFICATION_IDS_FIELD_NUMBER: _builtins.int
+    @_builtins.property
+    def notification_ids(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]:
+        """The notifications handled."""
+
+    def __init__(
+        self,
+        *,
+        notification_ids: _abc.Iterable[_builtins.int] | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["notification_ids", b"notification_ids"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___CompleteNotificationsRequest: _TypeAlias = CompleteNotificationsRequest  # noqa: Y015
+
+@_typing.final
+class CompleteNotificationsResponse(_message.Message):
+    """CompleteNotificationsResponse is the output of CompleteNotifications."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    def __init__(
+        self,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___CompleteNotificationsResponse: _TypeAlias = CompleteNotificationsResponse  # noqa: Y015

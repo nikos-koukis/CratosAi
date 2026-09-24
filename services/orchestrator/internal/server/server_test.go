@@ -458,22 +458,42 @@ func TestDevicesAndApprovals(t *testing.T) {
 	if waiting["status"] != "waiting_for_approval" {
 		t.Fatalf("approval = %v", waiting)
 	}
-	_, err = h.client.SubmitDeviceApproval(tctx(t), &orchv1.SubmitDeviceApprovalRequest{TenantId: h.tenant,
-		UserId: "someone-else", ApprovalId: "appr-1", ApproverId: "my-iphone", Signature: make([]byte, 64)})
-	wantReason(t, err, codes.NotFound, orchv1.ErrorReason_ERROR_REASON_APPROVAL_NOT_FOUND)
-	_, err = h.client.SubmitDeviceApproval(tctx(t), &orchv1.SubmitDeviceApprovalRequest{TenantId: h.tenant,
-		UserId: h.user, ApprovalId: "appr-1", ApproverId: "stranger", Signature: make([]byte, 64)})
-	wantReason(t, err, codes.PermissionDenied, orchv1.ErrorReason_ERROR_REASON_APPROVAL_REJECTED)
 	// The dashboard shows the approver exactly what the device asked to sign.
 	pending, err := h.client.GetTask(tctx(t), &orchv1.GetTaskRequest{TenantId: h.tenant, UserId: h.user,
 		TaskId: waiting["task_id"].(string)})
 	approval := pending.GetTask().GetPendingApproval()
-	if err != nil || approval.GetApprovalId() != "appr-1" || string(approval.GetPayload()) != "payload" ||
+	if err != nil || !strings.HasPrefix(approval.GetApprovalId(), "appr-") || string(approval.GetPayload()) != "payload" ||
 		approval.GetDeviceName() != "MacBook" || !approval.GetExpireTime().AsTime().After(time.Now()) {
 		t.Fatalf("pending approval = %v, %v", pending, err)
 	}
+	_, err = h.client.SubmitDeviceApproval(tctx(t), &orchv1.SubmitDeviceApprovalRequest{TenantId: h.tenant,
+		UserId: "someone-else", ApprovalId: approval.GetApprovalId(), ApproverId: "my-iphone", Signature: make([]byte, 64)})
+	wantReason(t, err, codes.NotFound, orchv1.ErrorReason_ERROR_REASON_APPROVAL_NOT_FOUND)
+
+	// A signature the device refuses spends the approval (one attempt each):
+	// the command did not run and the task says so.
+	_, err = h.client.SubmitDeviceApproval(tctx(t), &orchv1.SubmitDeviceApprovalRequest{TenantId: h.tenant,
+		UserId: h.user, ApprovalId: approval.GetApprovalId(), ApproverId: "stranger", Signature: make([]byte, 64)})
+	wantReason(t, err, codes.PermissionDenied, orchv1.ErrorReason_ERROR_REASON_APPROVAL_REJECTED)
+	rejected := h.waitTask(t, waiting["task_id"].(string), orchv1.TaskState_TASK_STATE_FAILED)
+	if !strings.Contains(rejected.GetResult(), "rejected the approval") || rejected.GetPendingApproval() != nil {
+		t.Fatalf("rejected task = %v", rejected)
+	}
+	_, err = h.client.SubmitDeviceApproval(tctx(t), &orchv1.SubmitDeviceApprovalRequest{TenantId: h.tenant,
+		UserId: h.user, ApprovalId: approval.GetApprovalId(), ApproverId: "my-iphone", Signature: make([]byte, 64)})
+	wantReason(t, err, codes.NotFound, orchv1.ErrorReason_ERROR_REASON_APPROVAL_NOT_FOUND)
+
+	// Asked again, and approved by the right phone.
+	waiting = decode(t, h.call(t, conv.GetConversationId(), "run_on_computer",
+		`{"device":"MacBook","program":"/bin/rm","args":["-rf","build"]}`, 3).GetOutput())
+	second, err := h.client.GetTask(tctx(t), &orchv1.GetTaskRequest{TenantId: h.tenant, UserId: h.user,
+		TaskId: waiting["task_id"].(string)})
+	if err != nil {
+		t.Fatal(err)
+	}
 	approved, err := h.client.SubmitDeviceApproval(tctx(t), &orchv1.SubmitDeviceApprovalRequest{TenantId: h.tenant,
-		UserId: h.user, ApprovalId: "appr-1", ApproverId: "my-iphone", Signature: make([]byte, 64)})
+		UserId: h.user, ApprovalId: second.GetTask().GetPendingApproval().GetApprovalId(), ApproverId: "my-iphone",
+		Signature: make([]byte, 64)})
 	if err != nil || !strings.Contains(approved.GetOutput(), "ran /bin/rm") {
 		t.Fatalf("approved = %v, %v", approved, err)
 	}
@@ -481,9 +501,10 @@ func TestDevicesAndApprovals(t *testing.T) {
 	if !strings.Contains(task.GetResult(), "ran /bin/rm") || task.GetPendingApproval() != nil {
 		t.Fatalf("task = %v", task)
 	}
-	finished := h.events(t, conv.GetConversationId(), 1)
-	if finished[0].GetTaskFinished().GetTask().GetTaskId() != task.GetTaskId() {
-		t.Fatalf("event = %v", finished[0])
+	finished := h.events(t, conv.GetConversationId(), 2)
+	if finished[0].GetTaskFinished().GetTask().GetState() != orchv1.TaskState_TASK_STATE_FAILED ||
+		finished[1].GetTaskFinished().GetTask().GetTaskId() != task.GetTaskId() {
+		t.Fatalf("events = %v", finished)
 	}
 
 	list, _ := h.client.ListDevices(tctx(t), &orchv1.ListDevicesRequest{TenantId: h.tenant, UserId: h.user})
@@ -738,4 +759,27 @@ func TestAbandonedConversationsAreClosedAndRemembered(t *testing.T) {
 	_, err := h.client.CallTool(tctx(t), &orchv1.CallToolRequest{ConversationId: conv, CallId: "late",
 		Name: "recall_memory", ArgumentsJson: `{"query":"demo"}`, UserTurn: 2})
 	wantReason(t, err, codes.FailedPrecondition, orchv1.ErrorReason_ERROR_REASON_CONVERSATION_CLOSED)
+}
+
+func TestUnsignedApprovalsExpire(t *testing.T) {
+	h := newHarness(t)
+	ca, cert, key := deviceIdentity(t)
+	if _, err := h.client.RegisterDevice(tctx(t), &orchv1.RegisterDeviceRequest{TenantId: h.tenant, UserId: h.user,
+		Name: "MacBook", Address: "100.101.102.103:7443", ServerName: "macbook", CaPem: ca, ClientCertPem: cert,
+		ClientKeyPem: []byte(key)}); err != nil {
+		t.Fatal(err)
+	}
+	conv := h.open(t).GetConversationId()
+	waiting := decode(t, h.call(t, conv, "run_on_computer", `{"device":"MacBook","program":"/bin/rm","args":["x"]}`, 1).GetOutput())
+	if _, err := db.Exec(tctx(t), `UPDATE device_approvals SET expires_at = now() - interval '1 second'`); err != nil {
+		t.Fatal(err)
+	}
+	expired := h.waitTask(t, waiting["task_id"].(string), orchv1.TaskState_TASK_STATE_FAILED)
+	if !strings.Contains(expired.GetResult(), "in time") {
+		t.Fatalf("task = %v", expired)
+	}
+	var left int
+	if err := db.QueryRow(tctx(t), `SELECT count(*) FROM device_approvals`).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("%d approvals left (%v)", left, err)
+	}
 }

@@ -539,16 +539,23 @@ func (s *Store) ExpireConfirmations(ctx context.Context) ([]Confirmation, error)
 // When the conversation has ended, the event goes to the user's newest live
 // conversation instead, with the confirmation it asks about, so a result or a
 // question is still told; without one it waits for CarryOverEvents. It
-// returns the conversation that got the event.
-func (s *Store) AddEvent(ctx context.Context, conversation uuid.UUID, payload []byte, confirmation uuid.NullUUID) (uuid.UUID, error) {
-	var target uuid.UUID
+// returns the conversation that got the event and whether it is live (someone
+// will hear it now).
+func (s *Store) AddEvent(ctx context.Context, conversation uuid.UUID, payload []byte, confirmation uuid.NullUUID) (uuid.UUID, bool, error) {
+	target, live := conversation, false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(
-			  (SELECT id FROM conversations WHERE id = $1 AND closed_at IS NULL),
-			  (SELECT o.id FROM conversations c JOIN conversations o ON o.tenant_id = c.tenant_id AND o.user_id = c.user_id
-			    WHERE c.id = $1 AND o.closed_at IS NULL AND o.created_at > now() - make_interval(secs => $2)
-			    ORDER BY o.created_at DESC LIMIT 1),
-			  $1)`, conversation, ConversationLifetime.Seconds()).Scan(&target); err != nil {
+		err := tx.QueryRow(ctx, `(SELECT id FROM conversations WHERE id = $1 AND closed_at IS NULL)
+			UNION ALL
+			(SELECT o.id FROM conversations c JOIN conversations o ON o.tenant_id = c.tenant_id AND o.user_id = c.user_id
+			  WHERE c.id = $1 AND o.closed_at IS NULL AND o.created_at > now() - make_interval(secs => $2)
+			  ORDER BY o.created_at DESC LIMIT 1)
+			LIMIT 1`, conversation, ConversationLifetime.Seconds()).Scan(&target)
+		switch {
+		case err == nil:
+			live = true
+		case errors.Is(err, pgx.ErrNoRows):
+			target = conversation
+		default:
 			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO events (conversation_id, event, confirmation_id) VALUES ($1, $2, $3)`,
@@ -558,11 +565,11 @@ func (s *Store) AddEvent(ctx context.Context, conversation uuid.UUID, payload []
 		if target == conversation || !confirmation.Valid {
 			return nil
 		}
-		_, err := tx.Exec(ctx, `UPDATE confirmations SET conversation_id = $1, asked_turn = NULL
+		_, err = tx.Exec(ctx, `UPDATE confirmations SET conversation_id = $1, asked_turn = NULL
 			WHERE id = $2 AND state = 'pending'`, target, confirmation)
 		return err
 	})
-	return target, err
+	return target, live, err
 }
 
 // ConversationLifetime bounds how long a conversation can be live: voice
@@ -729,6 +736,20 @@ func (s *Store) Approval(ctx context.Context, tenant uuid.UUID, user, approvalID
 }
 
 // DeleteApproval removes a used approval.
+// ExpireApprovals deletes approvals past their expiry and returns them.
+func (s *Store) ExpireApprovals(ctx context.Context) ([]DeviceApproval, error) {
+	rows, err := s.pool.Query(ctx, `DELETE FROM device_approvals WHERE expires_at < now()
+		RETURNING approval_id, device_id, task_id, call_id, command, payload, expires_at`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (DeviceApproval, error) {
+		var a DeviceApproval
+		err := row.Scan(&a.ApprovalID, &a.DeviceID, &a.TaskID, &a.CallID, &a.Command, &a.Payload, &a.ExpiresAt)
+		return a, err
+	})
+}
+
 func (s *Store) DeleteApproval(ctx context.Context, approvalID string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM device_approvals WHERE approval_id = $1`, approvalID)
 	return err
@@ -762,4 +783,68 @@ func (s *Store) FinishMemoryJob(ctx context.Context, conversation uuid.UUID, sta
 		not_before = now() + make_interval(secs => $3) WHERE conversation_id = $1`,
 		conversation, state, retryAfter.Seconds(), lastError)
 	return err
+}
+
+// --- notifications ----------------------------------------------------------------
+
+// Notification kinds.
+const (
+	NotifyApproval     = "approval_needed"
+	NotifyConfirmation = "confirmation_needed"
+	NotifyFinished     = "task_finished"
+)
+
+// Notification is something to tell a user on their phone.
+type Notification struct {
+	ID        int64
+	TenantID  uuid.UUID
+	UserID    string
+	Kind      string
+	TaskID    uuid.UUID
+	TaskState string
+	CreatedAt time.Time
+}
+
+// AddNotification queues a notification.
+func (s *Store) AddNotification(ctx context.Context, n Notification) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO notifications (tenant_id, user_id, kind, task_id, task_state)
+		VALUES ($1, $2, $3, $4, $5)`, n.TenantID, n.UserID, n.Kind, n.TaskID, n.TaskState)
+	return err
+}
+
+// ClaimNotifications hands out up to max pending notifications for `lease`.
+// Those claimed maxAttempts times already, or older than maxAge, are skipped.
+func (s *Store) ClaimNotifications(ctx context.Context, consumer string, max int, lease time.Duration,
+	maxAttempts int, maxAge time.Duration) ([]Notification, error) {
+	rows, err := s.pool.Query(ctx, `UPDATE notifications SET claimed_by = $1,
+		  claimed_until = now() + make_interval(secs => $3), attempts = attempts + 1
+		WHERE id IN (SELECT id FROM notifications
+		  WHERE done_at IS NULL AND (claimed_until IS NULL OR claimed_until < now())
+		    AND attempts < $4 AND created_at > now() - make_interval(secs => $5)
+		  ORDER BY id LIMIT $2 FOR UPDATE SKIP LOCKED)
+		RETURNING id, tenant_id, user_id, kind, task_id, task_state, created_at`,
+		consumer, max, lease.Seconds(), maxAttempts, maxAge.Seconds())
+	if err != nil {
+		return nil, err
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Notification, error) {
+		var n Notification
+		err := row.Scan(&n.ID, &n.TenantID, &n.UserID, &n.Kind, &n.TaskID, &n.TaskState, &n.CreatedAt)
+		return n, err
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, err
+}
+
+// CompleteNotifications marks notifications handled.
+func (s *Store) CompleteNotifications(ctx context.Context, ids []int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE notifications SET done_at = now() WHERE id = ANY($1) AND done_at IS NULL`, ids)
+	return err
+}
+
+// PurgeNotifications deletes notifications older than keep.
+func (s *Store) PurgeNotifications(ctx context.Context, keep time.Duration) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM notifications WHERE created_at < now() - make_interval(secs => $1)`,
+		keep.Seconds())
+	return tag.RowsAffected(), err
 }

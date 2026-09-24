@@ -19,20 +19,22 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OrchestratorService_OpenConversation_FullMethodName     = "/jarvis.orchestrator.v1.OrchestratorService/OpenConversation"
-	OrchestratorService_RecordTurn_FullMethodName           = "/jarvis.orchestrator.v1.OrchestratorService/RecordTurn"
-	OrchestratorService_CallTool_FullMethodName             = "/jarvis.orchestrator.v1.OrchestratorService/CallTool"
-	OrchestratorService_AckToolOutput_FullMethodName        = "/jarvis.orchestrator.v1.OrchestratorService/AckToolOutput"
-	OrchestratorService_WatchConversation_FullMethodName    = "/jarvis.orchestrator.v1.OrchestratorService/WatchConversation"
-	OrchestratorService_AckEvent_FullMethodName             = "/jarvis.orchestrator.v1.OrchestratorService/AckEvent"
-	OrchestratorService_CloseConversation_FullMethodName    = "/jarvis.orchestrator.v1.OrchestratorService/CloseConversation"
-	OrchestratorService_GetTask_FullMethodName              = "/jarvis.orchestrator.v1.OrchestratorService/GetTask"
-	OrchestratorService_ListTasks_FullMethodName            = "/jarvis.orchestrator.v1.OrchestratorService/ListTasks"
-	OrchestratorService_CancelTask_FullMethodName           = "/jarvis.orchestrator.v1.OrchestratorService/CancelTask"
-	OrchestratorService_RegisterDevice_FullMethodName       = "/jarvis.orchestrator.v1.OrchestratorService/RegisterDevice"
-	OrchestratorService_ListDevices_FullMethodName          = "/jarvis.orchestrator.v1.OrchestratorService/ListDevices"
-	OrchestratorService_RemoveDevice_FullMethodName         = "/jarvis.orchestrator.v1.OrchestratorService/RemoveDevice"
-	OrchestratorService_SubmitDeviceApproval_FullMethodName = "/jarvis.orchestrator.v1.OrchestratorService/SubmitDeviceApproval"
+	OrchestratorService_OpenConversation_FullMethodName      = "/jarvis.orchestrator.v1.OrchestratorService/OpenConversation"
+	OrchestratorService_RecordTurn_FullMethodName            = "/jarvis.orchestrator.v1.OrchestratorService/RecordTurn"
+	OrchestratorService_CallTool_FullMethodName              = "/jarvis.orchestrator.v1.OrchestratorService/CallTool"
+	OrchestratorService_AckToolOutput_FullMethodName         = "/jarvis.orchestrator.v1.OrchestratorService/AckToolOutput"
+	OrchestratorService_WatchConversation_FullMethodName     = "/jarvis.orchestrator.v1.OrchestratorService/WatchConversation"
+	OrchestratorService_AckEvent_FullMethodName              = "/jarvis.orchestrator.v1.OrchestratorService/AckEvent"
+	OrchestratorService_CloseConversation_FullMethodName     = "/jarvis.orchestrator.v1.OrchestratorService/CloseConversation"
+	OrchestratorService_GetTask_FullMethodName               = "/jarvis.orchestrator.v1.OrchestratorService/GetTask"
+	OrchestratorService_ListTasks_FullMethodName             = "/jarvis.orchestrator.v1.OrchestratorService/ListTasks"
+	OrchestratorService_CancelTask_FullMethodName            = "/jarvis.orchestrator.v1.OrchestratorService/CancelTask"
+	OrchestratorService_RegisterDevice_FullMethodName        = "/jarvis.orchestrator.v1.OrchestratorService/RegisterDevice"
+	OrchestratorService_ListDevices_FullMethodName           = "/jarvis.orchestrator.v1.OrchestratorService/ListDevices"
+	OrchestratorService_RemoveDevice_FullMethodName          = "/jarvis.orchestrator.v1.OrchestratorService/RemoveDevice"
+	OrchestratorService_SubmitDeviceApproval_FullMethodName  = "/jarvis.orchestrator.v1.OrchestratorService/SubmitDeviceApproval"
+	OrchestratorService_ClaimNotifications_FullMethodName    = "/jarvis.orchestrator.v1.OrchestratorService/ClaimNotifications"
+	OrchestratorService_CompleteNotifications_FullMethodName = "/jarvis.orchestrator.v1.OrchestratorService/CompleteNotifications"
 )
 
 // OrchestratorServiceClient is the client API for OrchestratorService service.
@@ -124,6 +126,15 @@ type OrchestratorServiceClient interface {
 	//   PERMISSION_DENIED    ERROR_REASON_APPROVAL_REJECTED (the device refused
 	//                        the signature).
 	SubmitDeviceApproval(ctx context.Context, in *SubmitDeviceApprovalRequest, opts ...grpc.CallOption) (*SubmitDeviceApprovalResponse, error)
+	// ClaimNotifications hands out things to tell users on their phones (push
+	// notifications), oldest first, waiting up to `wait` for new ones. Each is
+	// claimed for a minute: complete it with CompleteNotifications, or it is
+	// handed out again (at most 5 times, and never once it is an hour old).
+	// Several consumers may claim at once; none gets another's notification.
+	ClaimNotifications(ctx context.Context, in *ClaimNotificationsRequest, opts ...grpc.CallOption) (*ClaimNotificationsResponse, error)
+	// CompleteNotifications marks claimed notifications as handled (sent, or
+	// dropped because the user has no phone to send them to). Idempotent.
+	CompleteNotifications(ctx context.Context, in *CompleteNotificationsRequest, opts ...grpc.CallOption) (*CompleteNotificationsResponse, error)
 }
 
 type orchestratorServiceClient struct {
@@ -283,6 +294,26 @@ func (c *orchestratorServiceClient) SubmitDeviceApproval(ctx context.Context, in
 	return out, nil
 }
 
+func (c *orchestratorServiceClient) ClaimNotifications(ctx context.Context, in *ClaimNotificationsRequest, opts ...grpc.CallOption) (*ClaimNotificationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClaimNotificationsResponse)
+	err := c.cc.Invoke(ctx, OrchestratorService_ClaimNotifications_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorServiceClient) CompleteNotifications(ctx context.Context, in *CompleteNotificationsRequest, opts ...grpc.CallOption) (*CompleteNotificationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteNotificationsResponse)
+	err := c.cc.Invoke(ctx, OrchestratorService_CompleteNotifications_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrchestratorServiceServer is the server API for OrchestratorService service.
 // All implementations must embed UnimplementedOrchestratorServiceServer
 // for forward compatibility.
@@ -372,6 +403,15 @@ type OrchestratorServiceServer interface {
 	//   PERMISSION_DENIED    ERROR_REASON_APPROVAL_REJECTED (the device refused
 	//                        the signature).
 	SubmitDeviceApproval(context.Context, *SubmitDeviceApprovalRequest) (*SubmitDeviceApprovalResponse, error)
+	// ClaimNotifications hands out things to tell users on their phones (push
+	// notifications), oldest first, waiting up to `wait` for new ones. Each is
+	// claimed for a minute: complete it with CompleteNotifications, or it is
+	// handed out again (at most 5 times, and never once it is an hour old).
+	// Several consumers may claim at once; none gets another's notification.
+	ClaimNotifications(context.Context, *ClaimNotificationsRequest) (*ClaimNotificationsResponse, error)
+	// CompleteNotifications marks claimed notifications as handled (sent, or
+	// dropped because the user has no phone to send them to). Idempotent.
+	CompleteNotifications(context.Context, *CompleteNotificationsRequest) (*CompleteNotificationsResponse, error)
 	mustEmbedUnimplementedOrchestratorServiceServer()
 }
 
@@ -423,6 +463,12 @@ func (UnimplementedOrchestratorServiceServer) RemoveDevice(context.Context, *Rem
 }
 func (UnimplementedOrchestratorServiceServer) SubmitDeviceApproval(context.Context, *SubmitDeviceApprovalRequest) (*SubmitDeviceApprovalResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitDeviceApproval not implemented")
+}
+func (UnimplementedOrchestratorServiceServer) ClaimNotifications(context.Context, *ClaimNotificationsRequest) (*ClaimNotificationsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClaimNotifications not implemented")
+}
+func (UnimplementedOrchestratorServiceServer) CompleteNotifications(context.Context, *CompleteNotificationsRequest) (*CompleteNotificationsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompleteNotifications not implemented")
 }
 func (UnimplementedOrchestratorServiceServer) mustEmbedUnimplementedOrchestratorServiceServer() {}
 func (UnimplementedOrchestratorServiceServer) testEmbeddedByValue()                             {}
@@ -690,6 +736,42 @@ func _OrchestratorService_SubmitDeviceApproval_Handler(srv interface{}, ctx cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrchestratorService_ClaimNotifications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClaimNotificationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServiceServer).ClaimNotifications(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrchestratorService_ClaimNotifications_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServiceServer).ClaimNotifications(ctx, req.(*ClaimNotificationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OrchestratorService_CompleteNotifications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteNotificationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServiceServer).CompleteNotifications(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrchestratorService_CompleteNotifications_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServiceServer).CompleteNotifications(ctx, req.(*CompleteNotificationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrchestratorService_ServiceDesc is the grpc.ServiceDesc for OrchestratorService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -748,6 +830,14 @@ var OrchestratorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitDeviceApproval",
 			Handler:    _OrchestratorService_SubmitDeviceApproval_Handler,
+		},
+		{
+			MethodName: "ClaimNotifications",
+			Handler:    _OrchestratorService_ClaimNotifications_Handler,
+		},
+		{
+			MethodName: "CompleteNotifications",
+			Handler:    _OrchestratorService_CompleteNotifications_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

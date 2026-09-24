@@ -14,7 +14,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"jarvis.internal/voice-gateway/internal/auth"
+	"jarvis.internal/libs/go/usertoken"
 	"jarvis.internal/voice-gateway/internal/session"
 )
 
@@ -26,7 +26,7 @@ const maxClientFrame = 64 << 10
 
 // Server owns the voice sessions.
 type Server struct {
-	verifier   *auth.Verifier
+	verifier   *usertoken.Verifier
 	sessionCfg session.Config
 	deps       session.Deps
 	log        *slog.Logger
@@ -38,7 +38,7 @@ type Server struct {
 }
 
 // New creates a server; call Shutdown to end its sessions.
-func New(verifier *auth.Verifier, cfg session.Config, deps session.Deps) *Server {
+func New(verifier *usertoken.Verifier, cfg session.Config, deps session.Deps) *Server {
 	base, stop := context.WithCancel(context.Background())
 	return &Server{verifier: verifier, sessionCfg: cfg, deps: deps, log: deps.Logger, base: base, stop: stop}
 }
@@ -72,7 +72,7 @@ func (s *Server) handleVoice(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "shutting down", http.StatusServiceUnavailable)
 		return
 	}
-	token, ok := auth.BearerToken(r)
+	token, ok := usertoken.BearerToken(r)
 	if !ok {
 		unauthorized(w)
 		return
