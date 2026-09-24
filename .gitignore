@@ -29,6 +29,10 @@ dist/
 .env
 .env.*
 !.env.example
+# Apple keys and certificates (APNs auth keys live in ~/.config/jarvis/apns)
+*.p8
+*.p12
+*.mobileprovision
 
 # OS / editors
 .DS_Store
