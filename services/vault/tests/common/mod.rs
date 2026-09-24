@@ -56,7 +56,7 @@ const POLICY: &str = r#"
 
     [[principal]]
     id = "spiffe://jarvis.test/dashboard-api"
-    allow = ["CreateKey", "RevokeKey"]
+    allow = ["CreateKey", "RevokeKey", "ListKeys"]
 
     [[principal]]
     id = "spiffe://jarvis.test/mcp-router"

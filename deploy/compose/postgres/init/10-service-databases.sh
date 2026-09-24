@@ -9,6 +9,7 @@ set -eu
 : "${MCP_DB_PASSWORD:?MCP_DB_PASSWORD is not set}"
 : "${ORCH_DB_PASSWORD:?ORCH_DB_PASSWORD is not set}"
 : "${APP_DB_PASSWORD:?APP_DB_PASSWORD is not set}"
+: "${DASHBOARD_DB_PASSWORD:?DASHBOARD_DB_PASSWORD is not set}"
 
 # psql variables (:'name') quote passwords safely; SQL comes from stdin.
 psql --no-psqlrc --quiet --set=ON_ERROR_STOP=1 \
@@ -16,7 +17,8 @@ psql --no-psqlrc --quiet --set=ON_ERROR_STOP=1 \
   --set=vault_password="$VAULT_DB_PASSWORD" \
   --set=mcp_password="$MCP_DB_PASSWORD" \
   --set=orch_password="$ORCH_DB_PASSWORD" \
-  --set=app_password="$APP_DB_PASSWORD" <<'SQL'
+  --set=app_password="$APP_DB_PASSWORD" \
+  --set=dashboard_password="$DASHBOARD_DB_PASSWORD" <<'SQL'
 REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;
 
 SELECT format('CREATE ROLE vault LOGIN PASSWORD %L', :'vault_password')
@@ -42,4 +44,10 @@ SELECT format('CREATE ROLE app_api LOGIN PASSWORD %L', :'app_password')
 SELECT 'CREATE DATABASE app OWNER app_api'
  WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'app') \gexec
 REVOKE ALL ON DATABASE app FROM PUBLIC;
+
+SELECT format('CREATE ROLE dashboard LOGIN PASSWORD %L', :'dashboard_password')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dashboard') \gexec
+SELECT 'CREATE DATABASE dashboard OWNER dashboard'
+ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'dashboard') \gexec
+REVOKE ALL ON DATABASE dashboard FROM PUBLIC;
 SQL

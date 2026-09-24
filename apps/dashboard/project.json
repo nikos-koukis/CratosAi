@@ -1,0 +1,68 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "dashboard",
+  "projectType": "application",
+  "sourceRoot": "apps/dashboard/src",
+  "tags": ["type:app", "lang:ts"],
+  "implicitDependencies": ["proto"],
+  "namedInputs": {
+    "ts": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/.dev/**/*",
+      "!{projectRoot}/.next/**/*",
+      "!{projectRoot}/playwright-report/**/*",
+      "!{projectRoot}/test-results/**/*",
+      "{workspaceRoot}/gen/ts/**/*",
+      "{workspaceRoot}/pnpm-lock.yaml"
+    ]
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": ["ts"],
+      "outputs": ["{projectRoot}/.next"],
+      "options": {
+        "command": "NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--disable-warning=ExperimentalWarning pnpm exec next build",
+        "cwd": "apps/dashboard"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": ["ts"],
+      "options": {
+        "command": "NODE_OPTIONS=--disable-warning=ExperimentalWarning pnpm exec vitest run",
+        "cwd": "apps/dashboard"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["ts"],
+      "options": {
+        "command": "pnpm exec next typegen >/dev/null && pnpm exec eslint --max-warnings 0 . && pnpm exec tsc --noEmit && bash -n scripts/*.sh",
+        "cwd": "apps/dashboard"
+      }
+    },
+    "format-check": {
+      "executor": "nx:run-commands",
+      "inputs": ["ts"],
+      "options": { "command": "pnpm exec prettier --check .", "cwd": "apps/dashboard" }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm exec prettier --write .", "cwd": "apps/dashboard" }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "NODE_OPTIONS=--disable-warning=ExperimentalWarning pnpm exec playwright test",
+        "cwd": "apps/dashboard"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "scripts/dev-run.sh", "cwd": "apps/dashboard" }
+    }
+  }
+}

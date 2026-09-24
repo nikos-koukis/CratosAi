@@ -333,6 +333,29 @@ impl KeyStore {
 
     /// Revokes a key and destroys its crypto material. Revoking an already
     /// revoked key returns its existing metadata unchanged.
+    /// A tenant's keys, newest first (at most `limit`).
+    pub async fn list(
+        &self,
+        tenant_id: Uuid,
+        include_revoked: bool,
+        limit: i64,
+    ) -> Result<Vec<KeyMetadata>, VaultError> {
+        sqlx::query_as::<_, MetadataRow>(concat!(
+            "SELECT ",
+            metadata_columns!(),
+            " FROM provider_keys WHERE tenant_id = $1 AND ($2 OR status = 'active')
+             ORDER BY create_time DESC, key_id DESC LIMIT $3"
+        ))
+        .bind(tenant_id)
+        .bind(include_revoked)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect()
+    }
+
     pub async fn revoke(
         &self,
         tenant_id: Uuid,

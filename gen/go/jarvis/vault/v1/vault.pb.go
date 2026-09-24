@@ -736,6 +736,107 @@ func (x *RevokeKeyResponse) GetKey() *KeyMetadata {
 	return nil
 }
 
+// ListKeysRequest is the input to VaultService.ListKeys.
+type ListKeysRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Owning tenant (UUID).
+	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// Also return revoked keys.
+	IncludeRevoked bool `protobuf:"varint,2,opt,name=include_revoked,json=includeRevoked,proto3" json:"include_revoked,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ListKeysRequest) Reset() {
+	*x = ListKeysRequest{}
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListKeysRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListKeysRequest) ProtoMessage() {}
+
+func (x *ListKeysRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListKeysRequest.ProtoReflect.Descriptor instead.
+func (*ListKeysRequest) Descriptor() ([]byte, []int) {
+	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListKeysRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListKeysRequest) GetIncludeRevoked() bool {
+	if x != nil {
+		return x.IncludeRevoked
+	}
+	return false
+}
+
+// ListKeysResponse is the output of VaultService.ListKeys.
+type ListKeysResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The keys, newest first.
+	Keys          []*KeyMetadata `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListKeysResponse) Reset() {
+	*x = ListKeysResponse{}
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListKeysResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListKeysResponse) ProtoMessage() {}
+
+func (x *ListKeysResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListKeysResponse.ProtoReflect.Descriptor instead.
+func (*ListKeysResponse) Descriptor() ([]byte, []int) {
+	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ListKeysResponse) GetKeys() []*KeyMetadata {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
 // SealDataRequest is the input to VaultService.SealData.
 type SealDataRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -753,7 +854,7 @@ type SealDataRequest struct {
 
 func (x *SealDataRequest) Reset() {
 	*x = SealDataRequest{}
-	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[7]
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -765,7 +866,7 @@ func (x *SealDataRequest) String() string {
 func (*SealDataRequest) ProtoMessage() {}
 
 func (x *SealDataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[7]
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -778,7 +879,7 @@ func (x *SealDataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SealDataRequest.ProtoReflect.Descriptor instead.
 func (*SealDataRequest) Descriptor() ([]byte, []int) {
-	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{7}
+	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SealDataRequest) GetTenantId() string {
@@ -820,7 +921,7 @@ type SealDataResponse struct {
 
 func (x *SealDataResponse) Reset() {
 	*x = SealDataResponse{}
-	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[8]
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -832,7 +933,7 @@ func (x *SealDataResponse) String() string {
 func (*SealDataResponse) ProtoMessage() {}
 
 func (x *SealDataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[8]
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -845,7 +946,7 @@ func (x *SealDataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SealDataResponse.ProtoReflect.Descriptor instead.
 func (*SealDataResponse) Descriptor() ([]byte, []int) {
-	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{8}
+	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SealDataResponse) GetSealed() []byte {
@@ -872,7 +973,7 @@ type OpenDataRequest struct {
 
 func (x *OpenDataRequest) Reset() {
 	*x = OpenDataRequest{}
-	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[9]
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -884,7 +985,7 @@ func (x *OpenDataRequest) String() string {
 func (*OpenDataRequest) ProtoMessage() {}
 
 func (x *OpenDataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[9]
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -897,7 +998,7 @@ func (x *OpenDataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenDataRequest.ProtoReflect.Descriptor instead.
 func (*OpenDataRequest) Descriptor() ([]byte, []int) {
-	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{9}
+	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *OpenDataRequest) GetTenantId() string {
@@ -939,7 +1040,7 @@ type OpenDataResponse struct {
 
 func (x *OpenDataResponse) Reset() {
 	*x = OpenDataResponse{}
-	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[10]
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -951,7 +1052,7 @@ func (x *OpenDataResponse) String() string {
 func (*OpenDataResponse) ProtoMessage() {}
 
 func (x *OpenDataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[10]
+	mi := &file_jarvis_vault_v1_vault_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -964,7 +1065,7 @@ func (x *OpenDataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenDataResponse.ProtoReflect.Descriptor instead.
 func (*OpenDataResponse) Descriptor() ([]byte, []int) {
-	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{10}
+	return file_jarvis_vault_v1_vault_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *OpenDataResponse) GetPlaintext() []byte {
@@ -1017,7 +1118,12 @@ const file_jarvis_vault_v1_vault_proto_rawDesc = "" +
 	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x129\n" +
 	"\x06reason\x18\x03 \x01(\x0e2!.jarvis.vault.v1.RevocationReasonR\x06reason\"C\n" +
 	"\x11RevokeKeyResponse\x12.\n" +
-	"\x03key\x18\x01 \x01(\v2\x1c.jarvis.vault.v1.KeyMetadataR\x03key\"\x8a\x01\n" +
+	"\x03key\x18\x01 \x01(\v2\x1c.jarvis.vault.v1.KeyMetadataR\x03key\"W\n" +
+	"\x0fListKeysRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12'\n" +
+	"\x0finclude_revoked\x18\x02 \x01(\bR\x0eincludeRevoked\"D\n" +
+	"\x10ListKeysResponse\x120\n" +
+	"\x04keys\x18\x01 \x03(\v2\x1c.jarvis.vault.v1.KeyMetadataR\x04keys\"\x8a\x01\n" +
 	"\x0fSealDataRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x18\n" +
 	"\apurpose\x18\x02 \x01(\tR\apurpose\x12\x1d\n" +
@@ -1049,11 +1155,12 @@ const file_jarvis_vault_v1_vault_proto_rawDesc = "" +
 	"\x18ERROR_REASON_KEY_REVOKED\x10\x02\x12\"\n" +
 	"\x1eERROR_REASON_ACTIVE_KEY_EXISTS\x10\x03\x12$\n" +
 	" ERROR_REASON_REQUEST_ID_CONFLICT\x10\x04\x12$\n" +
-	" ERROR_REASON_SEALED_DATA_INVALID\x10\x052\xbe\x03\n" +
+	" ERROR_REASON_SEALED_DATA_INVALID\x10\x052\x8f\x04\n" +
 	"\fVaultService\x12R\n" +
 	"\tCreateKey\x12!.jarvis.vault.v1.CreateKeyRequest\x1a\".jarvis.vault.v1.CreateKeyResponse\x12d\n" +
 	"\x0fGetDecryptedKey\x12'.jarvis.vault.v1.GetDecryptedKeyRequest\x1a(.jarvis.vault.v1.GetDecryptedKeyResponse\x12R\n" +
 	"\tRevokeKey\x12!.jarvis.vault.v1.RevokeKeyRequest\x1a\".jarvis.vault.v1.RevokeKeyResponse\x12O\n" +
+	"\bListKeys\x12 .jarvis.vault.v1.ListKeysRequest\x1a!.jarvis.vault.v1.ListKeysResponse\x12O\n" +
 	"\bSealData\x12 .jarvis.vault.v1.SealDataRequest\x1a!.jarvis.vault.v1.SealDataResponse\x12O\n" +
 	"\bOpenData\x12 .jarvis.vault.v1.OpenDataRequest\x1a!.jarvis.vault.v1.OpenDataResponseB\xaf\x01\n" +
 	"\x13com.jarvis.vault.v1B\n" +
@@ -1072,7 +1179,7 @@ func file_jarvis_vault_v1_vault_proto_rawDescGZIP() []byte {
 }
 
 var file_jarvis_vault_v1_vault_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_jarvis_vault_v1_vault_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_jarvis_vault_v1_vault_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_jarvis_vault_v1_vault_proto_goTypes = []any{
 	(KeyStatus)(0),                  // 0: jarvis.vault.v1.KeyStatus
 	(RevocationReason)(0),           // 1: jarvis.vault.v1.RevocationReason
@@ -1084,41 +1191,46 @@ var file_jarvis_vault_v1_vault_proto_goTypes = []any{
 	(*GetDecryptedKeyResponse)(nil), // 7: jarvis.vault.v1.GetDecryptedKeyResponse
 	(*RevokeKeyRequest)(nil),        // 8: jarvis.vault.v1.RevokeKeyRequest
 	(*RevokeKeyResponse)(nil),       // 9: jarvis.vault.v1.RevokeKeyResponse
-	(*SealDataRequest)(nil),         // 10: jarvis.vault.v1.SealDataRequest
-	(*SealDataResponse)(nil),        // 11: jarvis.vault.v1.SealDataResponse
-	(*OpenDataRequest)(nil),         // 12: jarvis.vault.v1.OpenDataRequest
-	(*OpenDataResponse)(nil),        // 13: jarvis.vault.v1.OpenDataResponse
-	(v1.Provider)(0),                // 14: jarvis.common.v1.Provider
-	(*timestamppb.Timestamp)(nil),   // 15: google.protobuf.Timestamp
+	(*ListKeysRequest)(nil),         // 10: jarvis.vault.v1.ListKeysRequest
+	(*ListKeysResponse)(nil),        // 11: jarvis.vault.v1.ListKeysResponse
+	(*SealDataRequest)(nil),         // 12: jarvis.vault.v1.SealDataRequest
+	(*SealDataResponse)(nil),        // 13: jarvis.vault.v1.SealDataResponse
+	(*OpenDataRequest)(nil),         // 14: jarvis.vault.v1.OpenDataRequest
+	(*OpenDataResponse)(nil),        // 15: jarvis.vault.v1.OpenDataResponse
+	(v1.Provider)(0),                // 16: jarvis.common.v1.Provider
+	(*timestamppb.Timestamp)(nil),   // 17: google.protobuf.Timestamp
 }
 var file_jarvis_vault_v1_vault_proto_depIdxs = []int32{
-	14, // 0: jarvis.vault.v1.KeyMetadata.provider:type_name -> jarvis.common.v1.Provider
+	16, // 0: jarvis.vault.v1.KeyMetadata.provider:type_name -> jarvis.common.v1.Provider
 	0,  // 1: jarvis.vault.v1.KeyMetadata.status:type_name -> jarvis.vault.v1.KeyStatus
-	15, // 2: jarvis.vault.v1.KeyMetadata.create_time:type_name -> google.protobuf.Timestamp
-	15, // 3: jarvis.vault.v1.KeyMetadata.revoke_time:type_name -> google.protobuf.Timestamp
+	17, // 2: jarvis.vault.v1.KeyMetadata.create_time:type_name -> google.protobuf.Timestamp
+	17, // 3: jarvis.vault.v1.KeyMetadata.revoke_time:type_name -> google.protobuf.Timestamp
 	1,  // 4: jarvis.vault.v1.KeyMetadata.revocation_reason:type_name -> jarvis.vault.v1.RevocationReason
-	14, // 5: jarvis.vault.v1.CreateKeyRequest.provider:type_name -> jarvis.common.v1.Provider
+	16, // 5: jarvis.vault.v1.CreateKeyRequest.provider:type_name -> jarvis.common.v1.Provider
 	3,  // 6: jarvis.vault.v1.CreateKeyResponse.key:type_name -> jarvis.vault.v1.KeyMetadata
 	3,  // 7: jarvis.vault.v1.CreateKeyResponse.replaced_key:type_name -> jarvis.vault.v1.KeyMetadata
-	14, // 8: jarvis.vault.v1.GetDecryptedKeyRequest.provider:type_name -> jarvis.common.v1.Provider
-	14, // 9: jarvis.vault.v1.GetDecryptedKeyResponse.provider:type_name -> jarvis.common.v1.Provider
+	16, // 8: jarvis.vault.v1.GetDecryptedKeyRequest.provider:type_name -> jarvis.common.v1.Provider
+	16, // 9: jarvis.vault.v1.GetDecryptedKeyResponse.provider:type_name -> jarvis.common.v1.Provider
 	1,  // 10: jarvis.vault.v1.RevokeKeyRequest.reason:type_name -> jarvis.vault.v1.RevocationReason
 	3,  // 11: jarvis.vault.v1.RevokeKeyResponse.key:type_name -> jarvis.vault.v1.KeyMetadata
-	4,  // 12: jarvis.vault.v1.VaultService.CreateKey:input_type -> jarvis.vault.v1.CreateKeyRequest
-	6,  // 13: jarvis.vault.v1.VaultService.GetDecryptedKey:input_type -> jarvis.vault.v1.GetDecryptedKeyRequest
-	8,  // 14: jarvis.vault.v1.VaultService.RevokeKey:input_type -> jarvis.vault.v1.RevokeKeyRequest
-	10, // 15: jarvis.vault.v1.VaultService.SealData:input_type -> jarvis.vault.v1.SealDataRequest
-	12, // 16: jarvis.vault.v1.VaultService.OpenData:input_type -> jarvis.vault.v1.OpenDataRequest
-	5,  // 17: jarvis.vault.v1.VaultService.CreateKey:output_type -> jarvis.vault.v1.CreateKeyResponse
-	7,  // 18: jarvis.vault.v1.VaultService.GetDecryptedKey:output_type -> jarvis.vault.v1.GetDecryptedKeyResponse
-	9,  // 19: jarvis.vault.v1.VaultService.RevokeKey:output_type -> jarvis.vault.v1.RevokeKeyResponse
-	11, // 20: jarvis.vault.v1.VaultService.SealData:output_type -> jarvis.vault.v1.SealDataResponse
-	13, // 21: jarvis.vault.v1.VaultService.OpenData:output_type -> jarvis.vault.v1.OpenDataResponse
-	17, // [17:22] is the sub-list for method output_type
-	12, // [12:17] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	3,  // 12: jarvis.vault.v1.ListKeysResponse.keys:type_name -> jarvis.vault.v1.KeyMetadata
+	4,  // 13: jarvis.vault.v1.VaultService.CreateKey:input_type -> jarvis.vault.v1.CreateKeyRequest
+	6,  // 14: jarvis.vault.v1.VaultService.GetDecryptedKey:input_type -> jarvis.vault.v1.GetDecryptedKeyRequest
+	8,  // 15: jarvis.vault.v1.VaultService.RevokeKey:input_type -> jarvis.vault.v1.RevokeKeyRequest
+	10, // 16: jarvis.vault.v1.VaultService.ListKeys:input_type -> jarvis.vault.v1.ListKeysRequest
+	12, // 17: jarvis.vault.v1.VaultService.SealData:input_type -> jarvis.vault.v1.SealDataRequest
+	14, // 18: jarvis.vault.v1.VaultService.OpenData:input_type -> jarvis.vault.v1.OpenDataRequest
+	5,  // 19: jarvis.vault.v1.VaultService.CreateKey:output_type -> jarvis.vault.v1.CreateKeyResponse
+	7,  // 20: jarvis.vault.v1.VaultService.GetDecryptedKey:output_type -> jarvis.vault.v1.GetDecryptedKeyResponse
+	9,  // 21: jarvis.vault.v1.VaultService.RevokeKey:output_type -> jarvis.vault.v1.RevokeKeyResponse
+	11, // 22: jarvis.vault.v1.VaultService.ListKeys:output_type -> jarvis.vault.v1.ListKeysResponse
+	13, // 23: jarvis.vault.v1.VaultService.SealData:output_type -> jarvis.vault.v1.SealDataResponse
+	15, // 24: jarvis.vault.v1.VaultService.OpenData:output_type -> jarvis.vault.v1.OpenDataResponse
+	19, // [19:25] is the sub-list for method output_type
+	13, // [13:19] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_jarvis_vault_v1_vault_proto_init() }
@@ -1136,7 +1248,7 @@ func file_jarvis_vault_v1_vault_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_jarvis_vault_v1_vault_proto_rawDesc), len(file_jarvis_vault_v1_vault_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -8,11 +8,13 @@ node_modules/
 # Rust
 target/
 
-# Generated code other than Go and Python (gen/go and gen/python are
-# committed and kept in sync by `pnpm nx run proto:lint`)
+# Generated code: gen/go, gen/python, gen/swift and gen/ts are committed and
+# kept in sync with /proto by `pnpm nx run proto:lint`; anything else is not.
 gen/*
 !gen/go/
 !gen/python/
+!gen/swift/
+!gen/ts/
 
 # Python
 .venv/

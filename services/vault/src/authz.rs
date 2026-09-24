@@ -17,6 +17,7 @@ pub enum Rpc {
     CreateKey,
     GetDecryptedKey,
     RevokeKey,
+    ListKeys,
     SealData,
     OpenData,
 }
@@ -27,6 +28,7 @@ impl Rpc {
             Self::CreateKey => "CreateKey",
             Self::GetDecryptedKey => "GetDecryptedKey",
             Self::RevokeKey => "RevokeKey",
+            Self::ListKeys => "ListKeys",
             Self::SealData => "SealData",
             Self::OpenData => "OpenData",
         }
@@ -54,7 +56,7 @@ mod tests {
                 r#"
             [[principal]]
             id = "spiffe://jarvis.test/x"
-            allow = ["ListKeys"]
+            allow = ["DeleteAllKeys"]
             "#
             )
             .is_err()

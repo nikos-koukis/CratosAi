@@ -26,10 +26,12 @@
         "{workspaceRoot}/buf.gen.connect.yaml",
         "{workspaceRoot}/gen/swift/Sources/**/*",
         "{workspaceRoot}/buf.gen.swift.yaml",
-        "{workspaceRoot}/tools/swift/Package.swift"
+        "{workspaceRoot}/tools/swift/Package.swift",
+        "{workspaceRoot}/gen/ts/src/**/*",
+        "{workspaceRoot}/buf.gen.es.yaml"
       ],
       "options": {
-        "command": "buf lint && tools/check-generated-go.sh && tools/check-generated-python.sh && tools/check-generated-swift.sh"
+        "command": "buf lint && tools/check-generated-go.sh && tools/check-generated-python.sh && tools/check-generated-swift.sh && tools/check-generated-ts.sh"
       }
     },
     "format-check": {
@@ -66,7 +68,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "rm -rf gen/go/jarvis && tools/gen-go.sh && (cd gen/go && go mod tidy) && tools/gen-python.sh && tools/gen-swift.sh"
+        "command": "rm -rf gen/go/jarvis && tools/gen-go.sh && (cd gen/go && go mod tidy) && tools/gen-python.sh && tools/gen-swift.sh && tools/gen-ts.sh"
       }
     }
   }

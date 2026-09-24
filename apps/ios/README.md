@@ -18,7 +18,7 @@ The generated Swift for the protocol buffers is in [`gen/swift`](../../gen/swift
 
 ## What it does
 
-- **Pairing.** Scan the QR code from the dashboard (or `appctl pair`) with the Camera app. The `jarvis://pair` link opens Jarvis and pairs it; typing the server and code works too.
+- **Pairing.** Scan the QR code from the [dashboard](../dashboard/) (Devices → Pair an iPhone), or from `appctl pair`, with the Camera app. The `jarvis://pair` link opens Jarvis and pairs it; typing the server and code works too.
   - The refresh token stays in the keychain (`ThisDeviceOnly`), and access tokens stay in memory.
   - Refreshes are serialized, because a refresh token works once.
 - **Talk.**

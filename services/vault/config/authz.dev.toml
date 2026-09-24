@@ -5,7 +5,7 @@
 # Dashboard backend: manages keys, can never read plaintext.
 [[principal]]
 id = "spiffe://jarvis.local/dashboard-api"
-allow = ["CreateKey", "RevokeKey"]
+allow = ["CreateKey", "RevokeKey", "ListKeys"]
 
 # Voice gateway: reads plaintext keys to call the LLM provider.
 [[principal]]

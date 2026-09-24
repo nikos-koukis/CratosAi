@@ -16,8 +16,9 @@ use crate::{
     error::VaultError,
     proto::vault_v1::{
         CreateKeyRequest, CreateKeyResponse, GetDecryptedKeyRequest, GetDecryptedKeyResponse,
-        OpenDataRequest, OpenDataResponse, RevokeKeyRequest, RevokeKeyResponse, SealDataRequest,
-        SealDataResponse, get_decrypted_key_request::Selector, vault_service_server,
+        ListKeysRequest, ListKeysResponse, OpenDataRequest, OpenDataResponse, RevokeKeyRequest,
+        RevokeKeyResponse, SealDataRequest, SealDataResponse, get_decrypted_key_request::Selector,
+        vault_service_server,
     },
     store::{Idempotency, KeySelector, KeyStore, NewKey},
 };
@@ -35,6 +36,8 @@ const MAX_SUBJECT_LEN: usize = 128;
 const MAX_DATA_LEN: usize = 64 * 1024;
 /// Envelope overhead on top of the data (format, ids, nonces, tags).
 const MAX_SEALED_LEN: usize = MAX_DATA_LEN + 1024;
+/// ListKeys answers with at most this many keys.
+const MAX_LISTED_KEYS: i64 = 500;
 
 #[derive(Debug)]
 pub struct VaultService {
@@ -258,6 +261,24 @@ impl VaultService {
             key: Some(key.into()),
         })
     }
+
+    async fn handle_list(
+        &self,
+        call: &mut Call,
+        request: Request<ListKeysRequest>,
+    ) -> Result<ListKeysResponse, VaultError> {
+        self.authorize(call, &request)?;
+        let req = request.into_inner();
+        let tenant_id = parse_uuid("tenant_id", &req.tenant_id)?;
+        call.tenant_id = Some(tenant_id);
+        let keys = self
+            .store
+            .list(tenant_id, req.include_revoked, MAX_LISTED_KEYS)
+            .await?;
+        Ok(ListKeysResponse {
+            keys: keys.into_iter().map(Into::into).collect(),
+        })
+    }
 }
 
 impl VaultService {
@@ -373,6 +394,15 @@ impl vault_service_server::VaultService for VaultService {
     ) -> Result<Response<RevokeKeyResponse>, Status> {
         let mut call = Call::start(Rpc::RevokeKey, &request);
         let result = self.handle_revoke(&mut call, request).await;
+        self.finish(&call, result)
+    }
+
+    async fn list_keys(
+        &self,
+        request: Request<ListKeysRequest>,
+    ) -> Result<Response<ListKeysResponse>, Status> {
+        let mut call = Call::start(Rpc::ListKeys, &request);
+        let result = self.handle_list(&mut call, request).await;
         self.finish(&call, result)
     }
 

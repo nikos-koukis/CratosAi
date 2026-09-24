@@ -1,0 +1,9 @@
+# TypeScript messages and service descriptors for the dashboard (gen/ts), used
+# with Connect for gRPC. Run through tools/gen-ts.sh; the plugin is pinned in
+# the root package.json.
+version: v2
+plugins:
+  - local: node_modules/.bin/protoc-gen-es
+    out: gen/ts/src
+    opt:
+      - target=ts

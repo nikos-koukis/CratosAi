@@ -22,6 +22,7 @@ const (
 	VaultService_CreateKey_FullMethodName       = "/jarvis.vault.v1.VaultService/CreateKey"
 	VaultService_GetDecryptedKey_FullMethodName = "/jarvis.vault.v1.VaultService/GetDecryptedKey"
 	VaultService_RevokeKey_FullMethodName       = "/jarvis.vault.v1.VaultService/RevokeKey"
+	VaultService_ListKeys_FullMethodName        = "/jarvis.vault.v1.VaultService/ListKeys"
 	VaultService_SealData_FullMethodName        = "/jarvis.vault.v1.VaultService/SealData"
 	VaultService_OpenData_FullMethodName        = "/jarvis.vault.v1.VaultService/OpenData"
 )
@@ -90,6 +91,14 @@ type VaultServiceClient interface {
 	//   NOT_FOUND          ERROR_REASON_KEY_NOT_FOUND.
 	//   PERMISSION_DENIED  caller may not manage keys for this tenant.
 	RevokeKey(ctx context.Context, in *RevokeKeyRequest, opts ...grpc.CallOption) (*RevokeKeyResponse, error)
+	// ListKeys returns the metadata of a tenant's keys, newest first: the
+	// ACTIVE ones and, if asked, the revoked ones kept for the audit trail.
+	// Never secret material. At most 500 keys are returned.
+	//
+	// Errors:
+	//   INVALID_ARGUMENT   a field is missing or malformed.
+	//   PERMISSION_DENIED  caller may not manage keys for this tenant.
+	ListKeys(ctx context.Context, in *ListKeysRequest, opts ...grpc.CallOption) (*ListKeysResponse, error)
 	// SealData encrypts a small secret that the calling service stores itself
 	// (for example OAuth tokens), bound to a tenant, a purpose and a subject.
 	// The same envelope encryption as provider keys; only the Vault can open it.
@@ -141,6 +150,16 @@ func (c *vaultServiceClient) RevokeKey(ctx context.Context, in *RevokeKeyRequest
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RevokeKeyResponse)
 	err := c.cc.Invoke(ctx, VaultService_RevokeKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) ListKeys(ctx context.Context, in *ListKeysRequest, opts ...grpc.CallOption) (*ListKeysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListKeysResponse)
+	err := c.cc.Invoke(ctx, VaultService_ListKeys_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -231,6 +250,14 @@ type VaultServiceServer interface {
 	//   NOT_FOUND          ERROR_REASON_KEY_NOT_FOUND.
 	//   PERMISSION_DENIED  caller may not manage keys for this tenant.
 	RevokeKey(context.Context, *RevokeKeyRequest) (*RevokeKeyResponse, error)
+	// ListKeys returns the metadata of a tenant's keys, newest first: the
+	// ACTIVE ones and, if asked, the revoked ones kept for the audit trail.
+	// Never secret material. At most 500 keys are returned.
+	//
+	// Errors:
+	//   INVALID_ARGUMENT   a field is missing or malformed.
+	//   PERMISSION_DENIED  caller may not manage keys for this tenant.
+	ListKeys(context.Context, *ListKeysRequest) (*ListKeysResponse, error)
 	// SealData encrypts a small secret that the calling service stores itself
 	// (for example OAuth tokens), bound to a tenant, a purpose and a subject.
 	// The same envelope encryption as provider keys; only the Vault can open it.
@@ -266,6 +293,9 @@ func (UnimplementedVaultServiceServer) GetDecryptedKey(context.Context, *GetDecr
 }
 func (UnimplementedVaultServiceServer) RevokeKey(context.Context, *RevokeKeyRequest) (*RevokeKeyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RevokeKey not implemented")
+}
+func (UnimplementedVaultServiceServer) ListKeys(context.Context, *ListKeysRequest) (*ListKeysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListKeys not implemented")
 }
 func (UnimplementedVaultServiceServer) SealData(context.Context, *SealDataRequest) (*SealDataResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SealData not implemented")
@@ -348,6 +378,24 @@ func _VaultService_RevokeKey_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VaultService_ListKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).ListKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_ListKeys_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).ListKeys(ctx, req.(*ListKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _VaultService_SealData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SealDataRequest)
 	if err := dec(in); err != nil {
@@ -402,6 +450,10 @@ var VaultService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeKey",
 			Handler:    _VaultService_RevokeKey_Handler,
+		},
+		{
+			MethodName: "ListKeys",
+			Handler:    _VaultService_ListKeys_Handler,
 		},
 		{
 			MethodName: "SealData",

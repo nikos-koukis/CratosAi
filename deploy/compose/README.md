@@ -28,7 +28,7 @@ pnpm nx run infra:reset   # stop and DELETE all data
 - **Localhost only.** Every port is published on `127.0.0.1`, so nothing is reachable from the network.
 - **PostgreSQL:**
   - Every TCP connection needs a password (`scram-sha-256`), including connections from inside the container.
-  - Each service gets its own role and database (`vault`, `mcp_router`, `orchestrator`, `app_api`). A role owns only its database and cannot connect to the others or to `postgres`.
+  - Each service gets its own role and database (`vault`, `mcp_router`, `orchestrator`, `app_api`, `dashboard`). A role owns only its database and cannot connect to the others or to `postgres`.
   - The superuser is only for administration.
 - **Dragonfly** requires a password. **Qdrant** requires an API key. **Neo4j** requires authentication, and its usage reporting is off, as is Qdrant's telemetry.
 - **Container hardening:** `no-new-privileges` on every container, rotated logs, and memory caps (Neo4j heap 512 MiB, Dragonfly 512 MiB).

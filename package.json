@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@bufbuild/buf": "1.73.0",
+    "@bufbuild/protoc-gen-es": "2.15.0",
     "nx": "23.2.1"
   }
 }

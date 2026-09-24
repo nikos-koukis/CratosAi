@@ -69,6 +69,11 @@ class VaultServiceStub:
                 request_serializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.RevokeKeyRequest.SerializeToString,
                 response_deserializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.RevokeKeyResponse.FromString,
                 _registered_method=True)
+        self.ListKeys = channel.unary_unary(
+                '/jarvis.vault.v1.VaultService/ListKeys',
+                request_serializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.ListKeysRequest.SerializeToString,
+                response_deserializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.ListKeysResponse.FromString,
+                _registered_method=True)
         self.SealData = channel.unary_unary(
                 '/jarvis.vault.v1.VaultService/SealData',
                 request_serializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.SealDataRequest.SerializeToString,
@@ -158,6 +163,19 @@ class VaultServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListKeys(self, request, context):
+        """ListKeys returns the metadata of a tenant's keys, newest first: the
+        ACTIVE ones and, if asked, the revoked ones kept for the audit trail.
+        Never secret material. At most 500 keys are returned.
+
+        Errors:
+        INVALID_ARGUMENT   a field is missing or malformed.
+        PERMISSION_DENIED  caller may not manage keys for this tenant.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SealData(self, request, context):
         """SealData encrypts a small secret that the calling service stores itself
         (for example OAuth tokens), bound to a tenant, a purpose and a subject.
@@ -202,6 +220,11 @@ def add_VaultServiceServicer_to_server(servicer, server):
                     servicer.RevokeKey,
                     request_deserializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.RevokeKeyRequest.FromString,
                     response_serializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.RevokeKeyResponse.SerializeToString,
+            ),
+            'ListKeys': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListKeys,
+                    request_deserializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.ListKeysRequest.FromString,
+                    response_serializer=jarvis_dot_vault_dot_v1_dot_vault__pb2.ListKeysResponse.SerializeToString,
             ),
             'SealData': grpc.unary_unary_rpc_method_handler(
                     servicer.SealData,
@@ -315,6 +338,33 @@ class VaultService:
             '/jarvis.vault.v1.VaultService/RevokeKey',
             jarvis_dot_vault_dot_v1_dot_vault__pb2.RevokeKeyRequest.SerializeToString,
             jarvis_dot_vault_dot_v1_dot_vault__pb2.RevokeKeyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListKeys(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/jarvis.vault.v1.VaultService/ListKeys',
+            jarvis_dot_vault_dot_v1_dot_vault__pb2.ListKeysRequest.SerializeToString,
+            jarvis_dot_vault_dot_v1_dot_vault__pb2.ListKeysResponse.FromString,
             options,
             channel_credentials,
             insecure,

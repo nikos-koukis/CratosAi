@@ -2,6 +2,12 @@
 
 Stores tenant-owned LLM provider API keys (OpenAI, xAI, Anthropic, Google) and releases plaintext only to authorised internal services. Contract: [`proto/jarvis/vault/v1/vault.proto`](../../proto/jarvis/vault/v1/vault.proto).
 
+| Caller | RPCs |
+|---|---|
+| Dashboard (`dashboard-api`) | `CreateKey`, `RevokeKey`, `ListKeys` (metadata only: label, provider, last four characters, status) |
+| Voice gateway, orchestrator | `GetDecryptedKey` |
+| MCP router | `SealData`, `OpenData` (its OAuth tokens) |
+
 ## Security model
 
 - **Envelope encryption.** Each key gets its own random 256-bit data key (DEK). The key is encrypted with AES-256-GCM under the DEK, and the DEK is wrapped with AES-256-GCM under the key-encryption key (KEK). Both layers bind the ciphertext to its tenant, key id and provider, so a row copied elsewhere fails to decrypt.
@@ -62,11 +68,11 @@ pnpm nx run vault:test   # unit tests + integration tests (needs Docker)
 pnpm nx run vault:lint   # clippy with -D warnings
 ```
 
-The integration tests (`tests/grpc_api.rs`) start a real PostgreSQL per test with testcontainers. They serve the Vault over mTLS with a throwaway PKI and exercise the API through the generated client. Covered: tenant isolation, authorization, rotation under concurrency, idempotency, crypto-shredding, audit, and the absence of plaintext at rest.
+The integration tests (`tests/grpc_api.rs`) start a real PostgreSQL per test with testcontainers. They serve the Vault over mTLS with a throwaway PKI and exercise the API through the generated client. Covered: tenant isolation, authorization, rotation under concurrency, idempotency, crypto-shredding, listing, audit, and the absence of plaintext at rest.
 
 ## Known limitations
 
-- **Tenant scoping.** Principals are services that may act for any tenant. Binding a call to the end user's tenant needs a propagated user token, which is planned with the dashboard and auth work.
+- **Tenant scoping.** Principals are services that may act for any tenant. The dashboard checks that the signed-in user belongs to the workspace (tenant) before calling; binding a call to the end user cryptographically would need a propagated user token.
 - **Crypto-shredding is logical.** PostgreSQL MVCC, WAL and backups keep old row versions until vacuum or expiry. That ciphertext stays unreadable only while the KEK stays secret.
 - **Single KEK.** There is no KEK rotation yet, and no KMS or HSM backend. `MasterKey::from_key_bytes` is the extension point for adding one.
 - **Zeroization is best-effort.** The gRPC, HTTP/2 and TLS layers briefly hold plaintext in buffers this code does not control.

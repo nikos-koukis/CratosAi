@@ -1,0 +1,5 @@
+# TypeScript packages. Other languages keep their own workspaces (go.work,
+# Cargo.toml, pyproject.toml); Node tooling at the root only drives Nx.
+packages:
+  - apps/dashboard
+  - gen/ts

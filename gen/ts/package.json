@@ -1,0 +1,16 @@
+{
+  "name": "@jarvis/proto",
+  "private": true,
+  "description": "TypeScript messages and services for /proto (protoc-gen-es). Generated: run pnpm nx run proto:generate.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.15.0"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

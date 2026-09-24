@@ -11,7 +11,7 @@ use jarvis_vault::{
     authz::Rpc,
     proto::{
         common_v1::Provider,
-        vault_v1::{KeyStatus, RevocationReason},
+        vault_v1::{KeyStatus, ListKeysRequest, RevocationReason},
     },
     store::{KekRegistryError, KeyStore},
 };
@@ -246,6 +246,115 @@ async fn revocation_destroys_ciphertext_and_is_idempotent() {
         .create_key(create_request(tenant, Provider::Xai, "new", XAI_SECRET))
         .await
         .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn listing_shows_a_tenants_keys_newest_first_without_secrets() {
+    let vault = TestVault::start().await;
+    let tenant = Uuid::now_v7();
+    let other = Uuid::now_v7();
+    let mut dashboard = vault.client(DASHBOARD).await;
+    let mut gateway = vault.client(GATEWAY).await;
+
+    let create = |tenant, provider, label: &str, secret: &str| {
+        create_request(tenant, provider, label, secret)
+    };
+    let old = dashboard
+        .create_key(create(tenant, Provider::Openai, "old", OPENAI_SECRET))
+        .await
+        .unwrap()
+        .into_inner()
+        .key
+        .unwrap();
+    dashboard
+        .revoke_key(revoke_request(
+            tenant,
+            &old.key_id,
+            RevocationReason::Rotated,
+        ))
+        .await
+        .unwrap();
+    let openai = dashboard
+        .create_key(create(tenant, Provider::Openai, "openai", OPENAI_SECRET))
+        .await
+        .unwrap()
+        .into_inner()
+        .key
+        .unwrap();
+    let xai = dashboard
+        .create_key(create(tenant, Provider::Xai, "xai", XAI_SECRET))
+        .await
+        .unwrap()
+        .into_inner()
+        .key
+        .unwrap();
+    dashboard
+        .create_key(create(other, Provider::Xai, "not yours", XAI_SECRET))
+        .await
+        .unwrap();
+
+    let list = |include_revoked| ListKeysRequest {
+        tenant_id: tenant.to_string(),
+        include_revoked,
+    };
+    let active = dashboard
+        .list_keys(list(false))
+        .await
+        .unwrap()
+        .into_inner()
+        .keys;
+    assert_eq!(
+        active,
+        vec![xai.clone(), openai.clone()],
+        "active keys, newest first"
+    );
+
+    let all = dashboard
+        .list_keys(list(true))
+        .await
+        .unwrap()
+        .into_inner()
+        .keys;
+    let labels: Vec<_> = all.iter().map(|k| k.label.as_str()).collect();
+    assert_eq!(labels, ["xai", "openai", "old"]);
+    assert_eq!(all[2].status(), KeyStatus::Revoked);
+    assert_eq!(all[2].revocation_reason(), RevocationReason::Rotated);
+    for key in &all {
+        assert_eq!(key.tenant_id, tenant.to_string());
+        let shown = format!("{key:?}");
+        assert!(!shown.contains(OPENAI_SECRET) && !shown.contains(XAI_SECRET));
+    }
+
+    // A tenant without keys gets an empty list, not an error.
+    let empty = dashboard
+        .list_keys(ListKeysRequest {
+            tenant_id: Uuid::now_v7().to_string(),
+            include_revoked: true,
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .keys;
+    assert!(empty.is_empty());
+
+    // Only the dashboard may list; a malformed tenant is refused.
+    let status = gateway.list_keys(list(true)).await.unwrap_err();
+    assert_eq!(status.code(), Code::PermissionDenied);
+    let status = dashboard
+        .list_keys(ListKeysRequest {
+            tenant_id: "nope".into(),
+            include_revoked: false,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(status.code(), Code::InvalidArgument);
+    assert!(
+        vault
+            .audit
+            .events()
+            .iter()
+            .any(|e| e.rpc == Rpc::ListKeys && e.tenant_id == Some(tenant))
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

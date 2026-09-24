@@ -20,7 +20,7 @@ BIN=$STATE/bin
 DEV_TENANT=${DEV_TENANT:-0199e2e0-0000-7000-8000-000000000001}
 DEV_USER=${DEV_USER:-me}
 DEV_KEY=sk-dev-fake-0001
-PORTS="vault:50051 mcp-router:50052 knowledge:50053 fake-llm:9910 agent:9095 orchestrator:50054 echo-provider:9900 voice-gateway:8080 app-api:8081"
+PORTS="vault:50051 mcp-router:50052 knowledge:50053 fake-llm:9910 agent:9095 orchestrator:50054 echo-provider:9900 voice-gateway:8080 app-api:8081 dashboard:3000"
 
 start() { # start NAME DIR COMMAND...
   local name=$1 dir=$2
@@ -78,6 +78,8 @@ up() {
   wait_port voice-gateway 8080
   start app-api "$ROOT/services/app-api" env APP_API_BIN="$BIN/app-api" scripts/dev-run.sh
   wait_port app-api 8081
+  start dashboard "$ROOT/apps/dashboard" scripts/dev-run.sh
+  wait_port dashboard 3000 120
   (cd "$ROOT" && uv run --frozen python tools/dev-tenant.py "$DEV_TENANT" "$DEV_KEY")
   if grep -q "Push notifications on" "$STATE/app-api.log"; then
     grep "Push notifications on" "$STATE/app-api.log" | sed 's/^/  /'
@@ -88,6 +90,7 @@ up() {
 
 Jarvis is running. Dev tenant $DEV_TENANT, user $DEV_USER.
 
+  Dashboard:     ${DASHBOARD_ORIGIN:-http://localhost:3000} (create an account with a passkey)
   Pair the app:  (cd services/app-api && go run ./cmd/appctl pair -tenant $DEV_TENANT -user $DEV_USER)
   Talk in text:  (cd services/orchestrator && go run ./cmd/orchctl converse -tenant $DEV_TENANT -user $DEV_USER)
   Stop:          tools/dev-stack.sh down

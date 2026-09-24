@@ -26,7 +26,7 @@ from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__
 from jarvis.common.v1 import provider_pb2 as jarvis_dot_common_dot_v1_dot_provider__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bjarvis/vault/v1/vault.proto\x12\x0fjarvis.vault.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fjarvis/common/v1/provider.proto\"\xcb\x02\n\x0bKeyMetadata\x12\x0e\n\x06key_id\x18\x01 \x01(\t\x12\x11\n\ttenant_id\x18\x02 \x01(\t\x12,\n\x08provider\x18\x03 \x01(\x0e\x32\x1a.jarvis.common.v1.Provider\x12\r\n\x05label\x18\x04 \x01(\t\x12\x10\n\x08key_hint\x18\x05 \x01(\t\x12*\n\x06status\x18\x06 \x01(\x0e\x32\x1a.jarvis.vault.v1.KeyStatus\x12/\n\x0b\x63reate_time\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0brevoke_time\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12<\n\x11revocation_reason\x18\t \x01(\x0e\x32!.jarvis.vault.v1.RevocationReason\"\xa3\x01\n\x10\x43reateKeyRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12,\n\x08provider\x18\x02 \x01(\x0e\x32\x1a.jarvis.common.v1.Provider\x12\r\n\x05label\x18\x03 \x01(\t\x12\x13\n\x06secret\x18\x04 \x01(\x0c\x42\x03\x80\x01\x01\x12\x16\n\x0ereplace_active\x18\x05 \x01(\x08\x12\x12\n\nrequest_id\x18\x06 \x01(\t\"r\n\x11\x43reateKeyResponse\x12)\n\x03key\x18\x01 \x01(\x0b\x32\x1c.jarvis.vault.v1.KeyMetadata\x12\x32\n\x0creplaced_key\x18\x02 \x01(\x0b\x32\x1c.jarvis.vault.v1.KeyMetadata\"y\n\x16GetDecryptedKeyRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x10\n\x06key_id\x18\x02 \x01(\tH\x00\x12.\n\x08provider\x18\x03 \x01(\x0e\x32\x1a.jarvis.common.v1.ProviderH\x00\x42\n\n\x08selector\"l\n\x17GetDecryptedKeyResponse\x12\x0e\n\x06key_id\x18\x01 \x01(\t\x12,\n\x08provider\x18\x02 \x01(\x0e\x32\x1a.jarvis.common.v1.Provider\x12\x13\n\x06secret\x18\x03 \x01(\x0c\x42\x03\x80\x01\x01\"h\n\x10RevokeKeyRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x0e\n\x06key_id\x18\x02 \x01(\t\x12\x31\n\x06reason\x18\x03 \x01(\x0e\x32!.jarvis.vault.v1.RevocationReason\">\n\x11RevokeKeyResponse\x12)\n\x03key\x18\x01 \x01(\x0b\x32\x1c.jarvis.vault.v1.KeyMetadata\"a\n\x0fSealDataRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x0f\n\x07purpose\x18\x02 \x01(\t\x12\x12\n\nsubject_id\x18\x03 \x01(\t\x12\x16\n\tplaintext\x18\x04 \x01(\x0c\x42\x03\x80\x01\x01\"\"\n\x10SealDataResponse\x12\x0e\n\x06sealed\x18\x01 \x01(\x0c\"Y\n\x0fOpenDataRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x0f\n\x07purpose\x18\x02 \x01(\t\x12\x12\n\nsubject_id\x18\x03 \x01(\t\x12\x0e\n\x06sealed\x18\x04 \x01(\x0c\"*\n\x10OpenDataResponse\x12\x16\n\tplaintext\x18\x01 \x01(\x0c\x42\x03\x80\x01\x01*V\n\tKeyStatus\x12\x1a\n\x16KEY_STATUS_UNSPECIFIED\x10\x00\x12\x15\n\x11KEY_STATUS_ACTIVE\x10\x01\x12\x16\n\x12KEY_STATUS_REVOKED\x10\x02*\x9d\x01\n\x10RevocationReason\x12!\n\x1dREVOCATION_REASON_UNSPECIFIED\x10\x00\x12$\n REVOCATION_REASON_USER_REQUESTED\x10\x01\x12\x1d\n\x19REVOCATION_REASON_ROTATED\x10\x02\x12!\n\x1dREVOCATION_REASON_COMPROMISED\x10\x03*\xd9\x01\n\x0b\x45rrorReason\x12\x1c\n\x18\x45RROR_REASON_UNSPECIFIED\x10\x00\x12\x1e\n\x1a\x45RROR_REASON_KEY_NOT_FOUND\x10\x01\x12\x1c\n\x18\x45RROR_REASON_KEY_REVOKED\x10\x02\x12\"\n\x1e\x45RROR_REASON_ACTIVE_KEY_EXISTS\x10\x03\x12$\n ERROR_REASON_REQUEST_ID_CONFLICT\x10\x04\x12$\n ERROR_REASON_SEALED_DATA_INVALID\x10\x05\x32\xbe\x03\n\x0cVaultService\x12R\n\tCreateKey\x12!.jarvis.vault.v1.CreateKeyRequest\x1a\".jarvis.vault.v1.CreateKeyResponse\x12\x64\n\x0fGetDecryptedKey\x12\'.jarvis.vault.v1.GetDecryptedKeyRequest\x1a(.jarvis.vault.v1.GetDecryptedKeyResponse\x12R\n\tRevokeKey\x12!.jarvis.vault.v1.RevokeKeyRequest\x1a\".jarvis.vault.v1.RevokeKeyResponse\x12O\n\x08SealData\x12 .jarvis.vault.v1.SealDataRequest\x1a!.jarvis.vault.v1.SealDataResponse\x12O\n\x08OpenData\x12 .jarvis.vault.v1.OpenDataRequest\x1a!.jarvis.vault.v1.OpenDataResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bjarvis/vault/v1/vault.proto\x12\x0fjarvis.vault.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fjarvis/common/v1/provider.proto\"\xcb\x02\n\x0bKeyMetadata\x12\x0e\n\x06key_id\x18\x01 \x01(\t\x12\x11\n\ttenant_id\x18\x02 \x01(\t\x12,\n\x08provider\x18\x03 \x01(\x0e\x32\x1a.jarvis.common.v1.Provider\x12\r\n\x05label\x18\x04 \x01(\t\x12\x10\n\x08key_hint\x18\x05 \x01(\t\x12*\n\x06status\x18\x06 \x01(\x0e\x32\x1a.jarvis.vault.v1.KeyStatus\x12/\n\x0b\x63reate_time\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0brevoke_time\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12<\n\x11revocation_reason\x18\t \x01(\x0e\x32!.jarvis.vault.v1.RevocationReason\"\xa3\x01\n\x10\x43reateKeyRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12,\n\x08provider\x18\x02 \x01(\x0e\x32\x1a.jarvis.common.v1.Provider\x12\r\n\x05label\x18\x03 \x01(\t\x12\x13\n\x06secret\x18\x04 \x01(\x0c\x42\x03\x80\x01\x01\x12\x16\n\x0ereplace_active\x18\x05 \x01(\x08\x12\x12\n\nrequest_id\x18\x06 \x01(\t\"r\n\x11\x43reateKeyResponse\x12)\n\x03key\x18\x01 \x01(\x0b\x32\x1c.jarvis.vault.v1.KeyMetadata\x12\x32\n\x0creplaced_key\x18\x02 \x01(\x0b\x32\x1c.jarvis.vault.v1.KeyMetadata\"y\n\x16GetDecryptedKeyRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x10\n\x06key_id\x18\x02 \x01(\tH\x00\x12.\n\x08provider\x18\x03 \x01(\x0e\x32\x1a.jarvis.common.v1.ProviderH\x00\x42\n\n\x08selector\"l\n\x17GetDecryptedKeyResponse\x12\x0e\n\x06key_id\x18\x01 \x01(\t\x12,\n\x08provider\x18\x02 \x01(\x0e\x32\x1a.jarvis.common.v1.Provider\x12\x13\n\x06secret\x18\x03 \x01(\x0c\x42\x03\x80\x01\x01\"h\n\x10RevokeKeyRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x0e\n\x06key_id\x18\x02 \x01(\t\x12\x31\n\x06reason\x18\x03 \x01(\x0e\x32!.jarvis.vault.v1.RevocationReason\">\n\x11RevokeKeyResponse\x12)\n\x03key\x18\x01 \x01(\x0b\x32\x1c.jarvis.vault.v1.KeyMetadata\"=\n\x0fListKeysRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x17\n\x0finclude_revoked\x18\x02 \x01(\x08\">\n\x10ListKeysResponse\x12*\n\x04keys\x18\x01 \x03(\x0b\x32\x1c.jarvis.vault.v1.KeyMetadata\"a\n\x0fSealDataRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x0f\n\x07purpose\x18\x02 \x01(\t\x12\x12\n\nsubject_id\x18\x03 \x01(\t\x12\x16\n\tplaintext\x18\x04 \x01(\x0c\x42\x03\x80\x01\x01\"\"\n\x10SealDataResponse\x12\x0e\n\x06sealed\x18\x01 \x01(\x0c\"Y\n\x0fOpenDataRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x0f\n\x07purpose\x18\x02 \x01(\t\x12\x12\n\nsubject_id\x18\x03 \x01(\t\x12\x0e\n\x06sealed\x18\x04 \x01(\x0c\"*\n\x10OpenDataResponse\x12\x16\n\tplaintext\x18\x01 \x01(\x0c\x42\x03\x80\x01\x01*V\n\tKeyStatus\x12\x1a\n\x16KEY_STATUS_UNSPECIFIED\x10\x00\x12\x15\n\x11KEY_STATUS_ACTIVE\x10\x01\x12\x16\n\x12KEY_STATUS_REVOKED\x10\x02*\x9d\x01\n\x10RevocationReason\x12!\n\x1dREVOCATION_REASON_UNSPECIFIED\x10\x00\x12$\n REVOCATION_REASON_USER_REQUESTED\x10\x01\x12\x1d\n\x19REVOCATION_REASON_ROTATED\x10\x02\x12!\n\x1dREVOCATION_REASON_COMPROMISED\x10\x03*\xd9\x01\n\x0b\x45rrorReason\x12\x1c\n\x18\x45RROR_REASON_UNSPECIFIED\x10\x00\x12\x1e\n\x1a\x45RROR_REASON_KEY_NOT_FOUND\x10\x01\x12\x1c\n\x18\x45RROR_REASON_KEY_REVOKED\x10\x02\x12\"\n\x1e\x45RROR_REASON_ACTIVE_KEY_EXISTS\x10\x03\x12$\n ERROR_REASON_REQUEST_ID_CONFLICT\x10\x04\x12$\n ERROR_REASON_SEALED_DATA_INVALID\x10\x05\x32\x8f\x04\n\x0cVaultService\x12R\n\tCreateKey\x12!.jarvis.vault.v1.CreateKeyRequest\x1a\".jarvis.vault.v1.CreateKeyResponse\x12\x64\n\x0fGetDecryptedKey\x12\'.jarvis.vault.v1.GetDecryptedKeyRequest\x1a(.jarvis.vault.v1.GetDecryptedKeyResponse\x12R\n\tRevokeKey\x12!.jarvis.vault.v1.RevokeKeyRequest\x1a\".jarvis.vault.v1.RevokeKeyResponse\x12O\n\x08ListKeys\x12 .jarvis.vault.v1.ListKeysRequest\x1a!.jarvis.vault.v1.ListKeysResponse\x12O\n\x08SealData\x12 .jarvis.vault.v1.SealDataRequest\x1a!.jarvis.vault.v1.SealDataResponse\x12O\n\x08OpenData\x12 .jarvis.vault.v1.OpenDataRequest\x1a!.jarvis.vault.v1.OpenDataResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,12 +41,12 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_SEALDATAREQUEST'].fields_by_name['plaintext']._serialized_options = b'\200\001\001'
   _globals['_OPENDATARESPONSE'].fields_by_name['plaintext']._loaded_options = None
   _globals['_OPENDATARESPONSE'].fields_by_name['plaintext']._serialized_options = b'\200\001\001'
-  _globals['_KEYSTATUS']._serialized_start=1403
-  _globals['_KEYSTATUS']._serialized_end=1489
-  _globals['_REVOCATIONREASON']._serialized_start=1492
-  _globals['_REVOCATIONREASON']._serialized_end=1649
-  _globals['_ERRORREASON']._serialized_start=1652
-  _globals['_ERRORREASON']._serialized_end=1869
+  _globals['_KEYSTATUS']._serialized_start=1530
+  _globals['_KEYSTATUS']._serialized_end=1616
+  _globals['_REVOCATIONREASON']._serialized_start=1619
+  _globals['_REVOCATIONREASON']._serialized_end=1776
+  _globals['_ERRORREASON']._serialized_start=1779
+  _globals['_ERRORREASON']._serialized_end=1996
   _globals['_KEYMETADATA']._serialized_start=115
   _globals['_KEYMETADATA']._serialized_end=446
   _globals['_CREATEKEYREQUEST']._serialized_start=449
@@ -61,14 +61,18 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_REVOKEKEYREQUEST']._serialized_end=1067
   _globals['_REVOKEKEYRESPONSE']._serialized_start=1069
   _globals['_REVOKEKEYRESPONSE']._serialized_end=1131
-  _globals['_SEALDATAREQUEST']._serialized_start=1133
-  _globals['_SEALDATAREQUEST']._serialized_end=1230
-  _globals['_SEALDATARESPONSE']._serialized_start=1232
-  _globals['_SEALDATARESPONSE']._serialized_end=1266
-  _globals['_OPENDATAREQUEST']._serialized_start=1268
-  _globals['_OPENDATAREQUEST']._serialized_end=1357
-  _globals['_OPENDATARESPONSE']._serialized_start=1359
-  _globals['_OPENDATARESPONSE']._serialized_end=1401
-  _globals['_VAULTSERVICE']._serialized_start=1872
-  _globals['_VAULTSERVICE']._serialized_end=2318
+  _globals['_LISTKEYSREQUEST']._serialized_start=1133
+  _globals['_LISTKEYSREQUEST']._serialized_end=1194
+  _globals['_LISTKEYSRESPONSE']._serialized_start=1196
+  _globals['_LISTKEYSRESPONSE']._serialized_end=1258
+  _globals['_SEALDATAREQUEST']._serialized_start=1260
+  _globals['_SEALDATAREQUEST']._serialized_end=1357
+  _globals['_SEALDATARESPONSE']._serialized_start=1359
+  _globals['_SEALDATARESPONSE']._serialized_end=1393
+  _globals['_OPENDATAREQUEST']._serialized_start=1395
+  _globals['_OPENDATAREQUEST']._serialized_end=1484
+  _globals['_OPENDATARESPONSE']._serialized_start=1486
+  _globals['_OPENDATARESPONSE']._serialized_end=1528
+  _globals['_VAULTSERVICE']._serialized_start=1999
+  _globals['_VAULTSERVICE']._serialized_end=2526
 # @@protoc_insertion_point(module_scope)

@@ -95,6 +95,15 @@ class VaultServiceStub:
       NOT_FOUND          ERROR_REASON_KEY_NOT_FOUND.
       PERMISSION_DENIED  caller may not manage keys for this tenant.
     """
+    ListKeys: _grpc.UnaryUnaryMultiCallable[_vault_pb2.ListKeysRequest, _vault_pb2.ListKeysResponse]
+    """ListKeys returns the metadata of a tenant's keys, newest first: the
+    ACTIVE ones and, if asked, the revoked ones kept for the audit trail.
+    Never secret material. At most 500 keys are returned.
+
+    Errors:
+      INVALID_ARGUMENT   a field is missing or malformed.
+      PERMISSION_DENIED  caller may not manage keys for this tenant.
+    """
     SealData: _grpc.UnaryUnaryMultiCallable[_vault_pb2.SealDataRequest, _vault_pb2.SealDataResponse]
     """SealData encrypts a small secret that the calling service stores itself
     (for example OAuth tokens), bound to a tenant, a purpose and a subject.
@@ -180,6 +189,15 @@ class VaultServiceAsyncStub(VaultServiceStub):
     Errors:
       INVALID_ARGUMENT   a field is missing or malformed.
       NOT_FOUND          ERROR_REASON_KEY_NOT_FOUND.
+      PERMISSION_DENIED  caller may not manage keys for this tenant.
+    """
+    ListKeys: _aio.UnaryUnaryMultiCallable[_vault_pb2.ListKeysRequest, _vault_pb2.ListKeysResponse]  # type: ignore[assignment]
+    """ListKeys returns the metadata of a tenant's keys, newest first: the
+    ACTIVE ones and, if asked, the revoked ones kept for the audit trail.
+    Never secret material. At most 500 keys are returned.
+
+    Errors:
+      INVALID_ARGUMENT   a field is missing or malformed.
       PERMISSION_DENIED  caller may not manage keys for this tenant.
     """
     SealData: _aio.UnaryUnaryMultiCallable[_vault_pb2.SealDataRequest, _vault_pb2.SealDataResponse]  # type: ignore[assignment]
@@ -282,6 +300,21 @@ class VaultServiceServicer(metaclass=_abc_1.ABCMeta):
         Errors:
           INVALID_ARGUMENT   a field is missing or malformed.
           NOT_FOUND          ERROR_REASON_KEY_NOT_FOUND.
+          PERMISSION_DENIED  caller may not manage keys for this tenant.
+        """
+
+    @_abc_1.abstractmethod
+    def ListKeys(
+        self,
+        request: _vault_pb2.ListKeysRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_vault_pb2.ListKeysResponse, _abc.Awaitable[_vault_pb2.ListKeysResponse]]:
+        """ListKeys returns the metadata of a tenant's keys, newest first: the
+        ACTIVE ones and, if asked, the revoked ones kept for the audit trail.
+        Never secret material. At most 500 keys are returned.
+
+        Errors:
+          INVALID_ARGUMENT   a field is missing or malformed.
           PERMISSION_DENIED  caller may not manage keys for this tenant.
         """
 

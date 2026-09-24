@@ -3,9 +3,11 @@
 isort:skip_file
 """
 
+from collections import abc as _abc
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from jarvis.common.v1 import provider_pb2 as _provider_pb2
 import builtins as _builtins
@@ -359,6 +361,56 @@ class RevokeKeyResponse(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___RevokeKeyResponse: _TypeAlias = RevokeKeyResponse  # noqa: Y015
+
+@_typing.final
+class ListKeysRequest(_message.Message):
+    """ListKeysRequest is the input to VaultService.ListKeys."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    TENANT_ID_FIELD_NUMBER: _builtins.int
+    INCLUDE_REVOKED_FIELD_NUMBER: _builtins.int
+    tenant_id: _builtins.str
+    """Owning tenant (UUID)."""
+    include_revoked: _builtins.bool
+    """Also return revoked keys."""
+    def __init__(
+        self,
+        *,
+        tenant_id: _builtins.str = ...,
+        include_revoked: _builtins.bool = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["include_revoked", b"include_revoked", "tenant_id", b"tenant_id"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___ListKeysRequest: _TypeAlias = ListKeysRequest  # noqa: Y015
+
+@_typing.final
+class ListKeysResponse(_message.Message):
+    """ListKeysResponse is the output of VaultService.ListKeys."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    KEYS_FIELD_NUMBER: _builtins.int
+    @_builtins.property
+    def keys(self) -> _containers.RepeatedCompositeFieldContainer[Global___KeyMetadata]:
+        """The keys, newest first."""
+
+    def __init__(
+        self,
+        *,
+        keys: _abc.Iterable[Global___KeyMetadata] | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["keys", b"keys"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___ListKeysResponse: _TypeAlias = ListKeysResponse  # noqa: Y015
 
 @_typing.final
 class SealDataRequest(_message.Message):

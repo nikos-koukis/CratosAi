@@ -158,4 +158,4 @@ Mutation testing confirmed that the tests catch each of these defects:
 
 - **One signing key.** There is no rotation yet. The gateway reads the JWKS from a file, not from the endpoint.
 - **Rate limits are per instance**, in memory.
-- **Pairing is the only way in.** Signing in to the dashboard, which issues the codes, comes in 4.2.
+- **Pairing is the only way in.** The [dashboard](../../apps/dashboard/) issues the codes (Devices page) to its signed-in users; `appctl` does the same for development.

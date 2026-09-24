@@ -68,6 +68,15 @@ service VaultService {
   //   PERMISSION_DENIED  caller may not manage keys for this tenant.
   rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
 
+  // ListKeys returns the metadata of a tenant's keys, newest first: the
+  // ACTIVE ones and, if asked, the revoked ones kept for the audit trail.
+  // Never secret material. At most 500 keys are returned.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT   a field is missing or malformed.
+  //   PERMISSION_DENIED  caller may not manage keys for this tenant.
+  rpc ListKeys(ListKeysRequest) returns (ListKeysResponse);
+
   // SealData encrypts a small secret that the calling service stores itself
   // (for example OAuth tokens), bound to a tenant, a purpose and a subject.
   // The same envelope encryption as provider keys; only the Vault can open it.
@@ -213,6 +222,20 @@ message RevokeKeyRequest {
 message RevokeKeyResponse {
   // Metadata of the revoked key.
   KeyMetadata key = 1;
+}
+
+// ListKeysRequest is the input to VaultService.ListKeys.
+message ListKeysRequest {
+  // Owning tenant (UUID).
+  string tenant_id = 1;
+  // Also return revoked keys.
+  bool include_revoked = 2;
+}
+
+// ListKeysResponse is the output of VaultService.ListKeys.
+message ListKeysResponse {
+  // The keys, newest first.
+  repeated KeyMetadata keys = 1;
 }
 
 // SealDataRequest is the input to VaultService.SealData.
